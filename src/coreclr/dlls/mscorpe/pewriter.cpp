@@ -808,7 +808,7 @@ HRESULT PEWriter::Init(PESectionMan *pFrom, DWORD createFlags, LPCWSTR seedFileN
     memset(pEntries, 0, sizeof(*pEntries) * cEntries);
 
     m_ntHeaders->Signature                       = VAL32(IMAGE_NT_SIGNATURE);
-    m_ntHeaders->FileHeader.TimeDateStamp        = VAL32((ULONG) now);
+    m_ntHeaders->FileHeader.TimeDateStamp        = VAL32((ULONG)0);
     m_ntHeaders->FileHeader.Characteristics      = VAL16(0);
 
     if (createFlags & ICEE_CREATE_FILE_STRIP_RELOCS)
