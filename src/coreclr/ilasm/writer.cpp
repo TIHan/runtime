@@ -7,6 +7,7 @@
 #include "ilasmpch.h"
 
 #include "assembler.h"
+#include "md5.h"
 
 #include "ceefilegenwriter.h"
 
@@ -59,31 +60,17 @@ exit:
     return hr;
 }
 
-HRESULT Assembler::ChangeMvid() {
-    GUID       mvid;
+HRESULT Assembler::ComputeMvid(BYTE* metaData, size_t len) {
+    MD5 md5;
+    MD5HASHDATA hash;
 
-    //static BCRYPT_ALG_HANDLE _algoSHA256 = 0;
-    //if (BCryptOpenAlgorithmProvider(&_algoSHA256, BCRYPT_SHA256_ALGORITHM, MS_PRIMITIVE_PROVIDER, 0) != STATUS_SUCCESS)
-    //{
-    //    BCRYPT_HASH_HANDLE hHash;
-
-    //    NTSTATUS status = BCryptCreateHash (_algoSHA256, &hHash, NULL, 0, (PUCHAR) key_input, (ULONG) key_len, 0);
-    //    if (status != STATUS_SUCCESS) {
-    //        return 0;
-    //    }
-    //}
-    //else
-    //{
-    //    CoCreateGuid(&mvid);
-    //}
-
-    CoCreateGuid(&mvid);
+    md5.Hash(metaData, len, &hash);
 
     IMetaDataMvidChanger* pMvidChanger;
 
     m_pDisp->QueryInterface(IID_IMetaDataMvidChanger, (void **)&pMvidChanger);
 
-    REFGUID pMvid = (GUID&)mvid;
+    REFGUID pMvid = (GUID&)hash;
 
     return pMvidChanger->ChangeMvid(pMvid);
 }
@@ -1535,6 +1522,8 @@ HRESULT Assembler::CreatePEFile(_In_ __nullterminated WCHAR *pwzOutputFilename)
         }
         if (FAILED(hr)) goto exit;
     }
+
+    ComputeMvid(metaData, metaDataSize);
 
     if(bClock) bClock->cFilegenBegin = GetTickCount();
     // actually output the meta-data

@@ -852,7 +852,7 @@ public:
     HRESULT CreateTLSDirectory();
     HRESULT CreateDebugDirectory();
     HRESULT InitMetaData();
-    HRESULT ChangeMvid();
+    HRESULT ComputeMvid(BYTE* metaData, size_t len);
     Class *FindCreateClass(_In_ __nullterminated const char *pszFQN);
     BOOL EmitFieldRef(_In_z_ char *pszArg, int opcode);
     BOOL EmitSwitchData(_In_z_ char *pszArg);
