@@ -67,7 +67,6 @@ Disp::DefineScope(
     PathString szFileNameSuffix;
     BEGIN_ENTRYPOINT_NOTHROW;
 
-    RegMeta     *pMeta = 0;
     OptionValue optionForNewScope = m_OptionValue;
 
 
@@ -92,27 +91,30 @@ Disp::DefineScope(
     }
 
     // Create a new coclass for this.
-    pMeta = new (nothrow) RegMeta();
-    IfNullGo(pMeta);
+    m_pMeta = new (nothrow) RegMeta();
+    IfNullGo(m_pMeta);
 
-    IfFailGo(pMeta->SetOption(&optionForNewScope));
+    IfFailGo(m_pMeta->SetOption(&optionForNewScope));
 
     // Create the MiniMd-style scope.
-    IfFailGo(pMeta->CreateNewMD());
+    IfFailGo(m_pMeta->CreateNewMD());
 
     // Get the requested interface.
-    IfFailGo(pMeta->QueryInterface(riid, (void **)ppIUnk));
+    IfFailGo(m_pMeta->QueryInterface(riid, (void **)ppIUnk));
 
     // Add the new RegMeta to the cache.
-    IfFailGo(pMeta->AddToCache());
+    IfFailGo(m_pMeta->AddToCache());
 
-    LOG((LOGMD, "{%08x} Created new emit scope\n", pMeta));
+    LOG((LOGMD, "{%08x} Created new emit scope\n", m_pMeta));
 
 ErrExit:
     if (FAILED(hr))
     {
-        if (pMeta != NULL)
-            delete pMeta;
+        if (m_pMeta != NULL)
+        {
+            delete m_pMeta;
+            m_pMeta = NULL;
+        }
         *ppIUnk = NULL;
     }
     END_ENTRYPOINT_NOTHROW;
@@ -123,6 +125,11 @@ ErrExit:
 #endif //!FEATURE_METADATA_EMIT
 } // Disp::DefineScope
 
+
+HRESULT Disp::ChangeMvid(const GUID& mvid)
+{
+    return m_pMeta->ChangeMvid(mvid);
+}
 
 //*****************************************************************************
 // Deliver scope to caller of OpenScope or OpenScopeOnMemory
@@ -448,7 +455,6 @@ Disp::DefinePortablePdbScope(
     
     BEGIN_ENTRYPOINT_NOTHROW;
 
-    RegMeta* pMeta = 0;
     OptionValue optionForNewScope = m_OptionValue;
 
     LOG((LF_METADATA, LL_INFO10, "Disp::DefinePortablePdbScope(0x%08x, 0x%08x, 0x%08x, 0x%08x)\n", rclsid, dwCreateFlags, riid, ppIUnk));
@@ -469,27 +475,30 @@ Disp::DefinePortablePdbScope(
     }
 
     // Create a new coclass for this.
-    pMeta = new (nothrow) RegMeta();
-    IfNullGo(pMeta);
+    m_pMeta = new (nothrow) RegMeta();
+    IfNullGo(m_pMeta);
 
-    IfFailGo(pMeta->SetOption(&optionForNewScope));
+    IfFailGo(m_pMeta->SetOption(&optionForNewScope));
 
     // Create the MiniMd-style scope for portable pdb
-    IfFailGo(pMeta->CreateNewPortablePdbMD());
+    IfFailGo(m_pMeta->CreateNewPortablePdbMD());
 
     // Get the requested interface.
-    IfFailGo(pMeta->QueryInterface(riid, (void**)ppIUnk));
+    IfFailGo(m_pMeta->QueryInterface(riid, (void**)ppIUnk));
 
     // Add the new RegMeta to the cache.
-    IfFailGo(pMeta->AddToCache());
+    IfFailGo(m_pMeta->AddToCache());
 
-    LOG((LOGMD, "{%08x} Created new emit scope\n", pMeta));
+    LOG((LOGMD, "{%08x} Created new emit scope\n", m_pMeta));
 
 ErrExit:
     if (FAILED(hr))
     {
-        if (pMeta != NULL)
-            delete pMeta;
+        if (m_pMeta != NULL)
+        {
+            delete m_pMeta;
+            m_pMeta = nullptr;
+        }
         *ppIUnk = NULL;
     }
     END_ENTRYPOINT_NOTHROW;
@@ -546,41 +555,43 @@ HRESULT Disp::OpenRawScopeOnCustomDataSource(        // Return code.
 
     BEGIN_ENTRYPOINT_NOTHROW;
 
-    RegMeta     *pMeta = 0;
-
     _ASSERTE(!IsOfReserved(dwOpenFlags));
 
     // Create a new coclass for this guy.
-    pMeta = new (nothrow)RegMeta();
-    IfNullGo(pMeta);
-    IfFailGo(pMeta->SetOption(&m_OptionValue));
+    m_pMeta = new (nothrow)RegMeta();
+    IfNullGo(m_pMeta);
+    IfFailGo(m_pMeta->SetOption(&m_OptionValue));
 
 
-    PREFIX_ASSUME(pMeta != NULL);
+    PREFIX_ASSUME(m_pMeta != NULL);
     // Always initialize the RegMeta's stgdb.
     // TODO
-    IfFailGo(pMeta->OpenExistingMD(pDataSource, dwOpenFlags));
+    IfFailGo(m_pMeta->OpenExistingMD(pDataSource, dwOpenFlags));
 
-    LOG((LOGMD, "{%08x} Opened new scope on custom data source, pDataSource: %08x\n", pMeta, pDataSource));
+    LOG((LOGMD, "{%08x} Opened new scope on custom data source, pDataSource: %08x\n", m_pMeta, pDataSource));
 
     // Return the requested interface.
-    IfFailGo(pMeta->QueryInterface(riid, (void **)ppIUnk));
+    IfFailGo(m_pMeta->QueryInterface(riid, (void **)ppIUnk));
 
     // Add the new RegMeta to the cache.
-    IfFailGo(pMeta->AddToCache());
+    IfFailGo(m_pMeta->AddToCache());
 
 #if defined(_DEBUG)
     if (CLRConfig::GetConfigValue(CLRConfig::INTERNAL_MD_RegMetaDump))
     {
         int DumpMD_impl(RegMeta *pMD);
-        DumpMD_impl(pMeta);
+        DumpMD_impl(m_pMeta);
     }
 #endif // _DEBUG
 
 ErrExit:
     if (FAILED(hr))
     {
-        if (pMeta) delete pMeta;
+        if (m_pMeta)
+        {
+            delete m_pMeta;
+            m_pMeta = nullptr;
+        }
         *ppIUnk = 0;
     }
 
@@ -626,6 +637,8 @@ HRESULT Disp::QueryInterface(REFIID riid, void **ppUnk)
     else if (riid == IID_IMetaDataDispenserCustom)
         *ppUnk = static_cast<IMetaDataDispenserCustom*>(this);
 #endif
+    else if (riid == IID_IMetaDataMvidChanger)
+        *ppUnk = static_cast<IMetaDataMvidChanger*>(this);
     else
         return E_NOINTERFACE;
     AddRef();

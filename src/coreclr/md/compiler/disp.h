@@ -23,6 +23,7 @@ class Disp :
 #ifdef FEATURE_METADATA_CUSTOM_DATA_SOURCE
     , IMetaDataDispenserCustom
 #endif
+    , IMetaDataMvidChanger
 {
 public:
     Disp();
@@ -134,10 +135,13 @@ private:
         IUnknown    **ppIUnk);              // [out] Return interface on success.
 #endif
 
+    HRESULT ChangeMvid(const GUID& mvid);
+
 
 private:
     LONG        m_cRef;                 // Ref count
     OptionValue m_OptionValue;          // values can be set by using SetOption
+    RegMeta*    m_pMeta;                // Reg meta
 };
 
 #endif // __Disp__h__

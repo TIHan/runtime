@@ -701,6 +701,9 @@ extern "C" int _cdecl wmain(int argc, _In_ WCHAR **argv)
                             delete pIn;
                         }
                     } // end for(iFile)
+
+                    pAsm->ChangeMvid();
+
                     if(bClock) cw.cParsEnd = GetTickCount();
                     if ((pParser->Success() && fAllFilesPresent) || pAsm->OnErrGo)
                     {

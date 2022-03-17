@@ -1168,6 +1168,18 @@ DECLARE_INTERFACE_(IMetaDataDispenserCustom, IUnknown)
 
 #endif // FEATURE_METADATA_CUSTOM_DATA_SOURCE
 
+// {503F79FB-7AAE-4364-BDA6-8E235D173AED}
+EXTERN_GUID(IID_IMetaDataMvidChanger,
+    0x503f79fb, 0x7aae, 0x4364, 0xbd, 0xa6, 0x8e, 0x23, 0x5d, 0x17, 0x3a, 0xed);
+
+#undef  INTERFACE
+#define INTERFACE IMetaDataMvidChanger
+DECLARE_INTERFACE_(IMetaDataMvidChanger, IUnknown)
+{
+    STDMETHOD(ChangeMvid)(const GUID& mvid);
+
+}; // IMetaDataDispenserCustom
+
 #ifdef FEATURE_METADATA_DEBUGGEE_DATA_SOURCE
 struct ICorDebugDataTarget;
 HRESULT CreateRemoteMDInternalRWSource(TADDR mdInternalRWRemoteAddress, ICorDebugDataTarget* pDataTarget, DWORD defines, DWORD dataStructureVersion, IMDCustomDataSource** ppDataSource);
