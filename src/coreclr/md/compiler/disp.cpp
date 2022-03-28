@@ -476,29 +476,36 @@ Disp::DefinePortablePdbScope(
     }
 
     // Create a new coclass for this.
-    m_pMeta = new (nothrow) RegMeta();
-    IfNullGo(m_pMeta);
+    RegMeta* pMeta = new (nothrow) RegMeta();
+    IfNullGo(pMeta);
 
-    IfFailGo(m_pMeta->SetOption(&optionForNewScope));
+    IfFailGo(pMeta->SetOption(&optionForNewScope));
 
     // Create the MiniMd-style scope for portable pdb
-    IfFailGo(m_pMeta->CreateNewPortablePdbMD());
+    IfFailGo(pMeta->CreateNewPortablePdbMD());
 
     // Get the requested interface.
-    IfFailGo(m_pMeta->QueryInterface(riid, (void**)ppIUnk));
+    IfFailGo(pMeta->QueryInterface(riid, (void**)ppIUnk));
+
+    IfFailGo(pMeta->QueryInterface(IID_IMDInternalEmit, (void **)&m_pInternal));
 
     // Add the new RegMeta to the cache.
-    IfFailGo(m_pMeta->AddToCache());
+    IfFailGo(pMeta->AddToCache());
 
-    LOG((LOGMD, "{%08x} Created new emit scope\n", m_pMeta));
+    LOG((LOGMD, "{%08x} Created new emit scope\n", pMeta));
 
 ErrExit:
     if (FAILED(hr))
     {
-        if (m_pMeta != NULL)
+        if (pMeta != NULL)
         {
-            delete m_pMeta;
-            m_pMeta = nullptr;
+            delete pMeta;
+            pMeta = nullptr;
+        }
+        if (m_pInternal != NULL)
+        {
+            delete m_pInternal;
+            m_pInternal = nullptr;
         }
         *ppIUnk = NULL;
     }
