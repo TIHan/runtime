@@ -764,6 +764,7 @@ public:
     BOOL    m_fDidCoInitialise;
 
     IMetaDataDispenserEx2 *m_pDisp;
+    IMDInternalEmit     *m_pInternal;
     IMetaDataEmit3      *m_pEmitter;
     ICeeFileGen        *m_pCeeFileGen;
     IMetaDataImport2    *m_pImporter;			// Import interface.

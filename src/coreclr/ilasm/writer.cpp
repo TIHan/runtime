@@ -33,16 +33,6 @@ HRESULT Assembler::InitMetaData()
     hr = MetaDataGetDispenser(CLSID_CorMetaDataDispenser,
         IID_IMetaDataDispenserEx2, (void **)&m_pDisp);
 
-    if(m_wzMetadataVersion)
-    {
-        VARIANT encOption;
-        BSTR    bstr;
-        V_VT(&encOption) = VT_BSTR;
-        V_BSTR(&encOption) = bstr = ::SysAllocString(m_wzMetadataVersion);
-        hr = m_pDisp->SetOption(MetaDataRuntimeVersion, &encOption);
-        ::SysFreeString(bstr);
-    }
-
     if (FAILED(hr))
         goto exit;
 
@@ -1521,6 +1511,7 @@ HRESULT Assembler::CreatePEFile(_In_ __nullterminated WCHAR *pwzOutputFilename)
 
     MD5 md5;
     MD5HASHDATA hash;
+    IMDInternalEmit* pInternal;
 
     md5.Hash(metaData, metaDataSize, &hash);
 
@@ -1530,7 +1521,7 @@ HRESULT Assembler::CreatePEFile(_In_ __nullterminated WCHAR *pwzOutputFilename)
 
     REFGUID pMvid = (GUID&)hash;
 
-    return pInternal->ChangeMvid(pMvid);
+    pInternal->ChangeMvid(pMvid);
 
     if(bClock) bClock->cFilegenBegin = GetTickCount();
     // actually output the meta-data

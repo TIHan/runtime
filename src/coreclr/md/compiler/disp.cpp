@@ -576,7 +576,7 @@ HRESULT Disp::OpenRawScopeOnCustomDataSource(        // Return code.
     // TODO
     IfFailGo(pMeta->OpenExistingMD(pDataSource, dwOpenFlags));
 
-    LOG((LOGMD, "{%08x} Opened new scope on custom data source, pDataSource: %08x\n", m_pMeta, pDataSource));
+    LOG((LOGMD, "{%08x} Opened new scope on custom data source, pDataSource: %08x\n", pMeta, pDataSource));
 
     // Return the requested interface.
     IfFailGo(pMeta->QueryInterface(riid, (void **)ppIUnk));
