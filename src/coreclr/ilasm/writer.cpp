@@ -1509,19 +1509,21 @@ HRESULT Assembler::CreatePEFile(_In_ __nullterminated WCHAR *pwzOutputFilename)
         if (FAILED(hr)) goto exit;
     }
 
-    MD5 md5;
-    MD5HASHDATA hash;
     IMDInternalEmit* pInternal;
+    if (m_pDisp->QueryInterface(IID_IMDInternalEmit, (void**)&pInternal) == S_OK)
+    {
+        MD5 md5;
+        MD5HASHDATA hash;
+        md5.Hash(metaData, metaDataSize, &hash);
 
-    md5.Hash(metaData, metaDataSize, &hash);
-
-    IMDInternalEmit* pInternal;
-
-    m_pDisp->QueryInterface(IID_IMDInternalEmit, (void **)&pInternal);
-
-    REFGUID pMvid = (GUID&)hash;
-
-    pInternal->ChangeMvid(pMvid);
+        REFGUID pMvid = (GUID&)hash;
+        pInternal->ChangeMvid(pMvid);
+    }
+    else
+    {
+        GUID mvid;
+        if (FAILED(hr=CoCreateGuid(&mvid))) goto exit;
+    }
 
     if(bClock) bClock->cFilegenBegin = GetTickCount();
     // actually output the meta-data
