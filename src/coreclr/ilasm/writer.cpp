@@ -1519,11 +1519,6 @@ HRESULT Assembler::CreatePEFile(_In_ __nullterminated WCHAR *pwzOutputFilename)
         REFGUID pMvid = (GUID&)hash;
         pInternal->ChangeMvid(pMvid);
     }
-    else
-    {
-        GUID mvid;
-        if (FAILED(hr=CoCreateGuid(&mvid))) goto exit;
-    }
 
     if(bClock) bClock->cFilegenBegin = GetTickCount();
     // actually output the meta-data
