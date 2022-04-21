@@ -1512,7 +1512,7 @@ HRESULT Assembler::CreatePEFile(_In_ __nullterminated WCHAR *pwzOutputFilename)
     if (m_pDisp->QueryInterface(IID_IMDInternalEmit, (void**)&pInternal) == S_OK)
     {
         GUID mvid;
-        sha256_hash(metaData, metaDataSize, (BYTE*)&mvid, sizeof(GUID));
+        Sha256Hash(metaData, metaDataSize, (BYTE*)&mvid, sizeof(GUID));
         pInternal->ChangeMvid(mvid);
     }
 
@@ -1601,7 +1601,7 @@ exit:
     return hr;
 }
 
-HRESULT sha256_hash(BYTE* pSrc, DWORD srcSize, BYTE* pDst, DWORD dstSize)
+HRESULT Sha256Hash(BYTE* pSrc, DWORD srcSize, BYTE* pDst, DWORD dstSize)
 {
     NTSTATUS status;
     
@@ -1612,40 +1612,17 @@ HRESULT sha256_hash(BYTE* pSrc, DWORD srcSize, BYTE* pDst, DWORD dstSize)
     DWORD   hashLength = 0;
     DWORD   resultLength = 0;
 
-    //
-    // Open an algorithm handle
-    // This sample passes BCRYPT_HASH_REUSABLE_FLAG with BCryptAlgorithmProvider(...) to load a provider which supports reusable hash
-    //
-    
-    status = BCryptOpenAlgorithmProvider(
-                                        &algHandle,                 // Alg Handle pointer
-                                        BCRYPT_SHA256_ALGORITHM,    // Cryptographic Algorithm name (null terminated unicode string)
-                                        NULL,                       // Provider name; if null, the default provider is loaded
-                                        BCRYPT_HASH_REUSABLE_FLAG); // Flags; Loads a provider which supports reusable hash
+    status = BCryptOpenAlgorithmProvider(&algHandle,BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_HASH_REUSABLE_FLAG);
     if(!NT_SUCCESS(status))
     {
         goto cleanup;
     }
 
-    //
-    // Obtain the length of the hash
-    //
-
-     status = BCryptGetProperty(
-                                        algHandle,                  // Handle to a CNG object
-                                        BCRYPT_HASH_LENGTH,         // Property name (null terminated unicode string)
-                                        (PBYTE)&hashLength,         // Address of the output buffer which recieves the property value
-                                        sizeof(hashLength),         // Size of the buffer in bytes
-                                        &resultLength,              // Number of bytes that were copied into the buffer
-                                        0);                         // Flags
+    status = BCryptGetProperty(algHandle, BCRYPT_HASH_LENGTH, (PBYTE)&hashLength, sizeof(hashLength), &resultLength, 0);
     if(!NT_SUCCESS(status))
     {
         goto cleanup;
     }
-
-    //
-    // Allocate the hash buffer on the heap
-    //
 
     hash = (PBYTE)HeapAlloc(GetProcessHeap(), 0, hashLength);
     if(NULL == hash)
@@ -1654,42 +1631,20 @@ HRESULT sha256_hash(BYTE* pSrc, DWORD srcSize, BYTE* pDst, DWORD dstSize)
         goto cleanup;
     }
 
-    //
-    // Create a hash handle
-    //
 
-    status = BCryptCreateHash(
-                                        algHandle,                  // Handle to an algorithm provider                 
-                                        &hashHandle,                // A pointer to a hash handle - can be a hash or hmac object
-                                        NULL,                       // Pointer to the buffer that recieves the hash/hmac object
-                                        0,                          // Size of the buffer in bytes
-                                        NULL,                       // A pointer to a key to use for the hash or MAC
-                                        0,                          // Size of the key in bytes
-                                        0);                         // Flags
-    if( !NT_SUCCESS(status) )
+    status = BCryptCreateHash(algHandle, &hashHandle, NULL, 0, NULL, 0, 0);
+    if(!NT_SUCCESS(status))
     {
         goto cleanup;
     }
     
-    //
-    // Hash the message(s)
-    // More than one message can be hashed by calling BCryptHashData 
-    //
-   
     status = BCryptHashData(hashHandle, pSrc, srcSize, 0);
     if(!NT_SUCCESS(status))
     {
         goto cleanup;
     }
     
-    //
-    // Obtain the hash of the message(s) into the hash buffer
-    //
-    
-    status = BCryptFinishHash(hashHandle,
-                                        hash,                       // A pointer to a buffer that receives the hash or MAC value
-                                        hashLength,                 // Size of the buffer in bytes
-                                        0);                         // Flags
+    status = BCryptFinishHash(hashHandle, hash, hashLength, 0);
     if(!NT_SUCCESS(status))
     {
         goto cleanup;
