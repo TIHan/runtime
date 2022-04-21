@@ -1608,11 +1608,11 @@ HRESULT Sha256Hash(BYTE* pSrc, DWORD srcSize, BYTE* pDst, DWORD dstSize)
     BCRYPT_ALG_HANDLE   algHandle = NULL;
     BCRYPT_HASH_HANDLE  hashHandle = NULL;
     
-    PBYTE   hash = NULL;
-    DWORD   hashLength = 0;
+    BYTE    hash[32]; // 256 bits
+    DWORD   hashLength = 32;
     DWORD   resultLength = 0;
 
-    status = BCryptOpenAlgorithmProvider(&algHandle,BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_HASH_REUSABLE_FLAG);
+    status = BCryptOpenAlgorithmProvider(&algHandle, BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_HASH_REUSABLE_FLAG);
     if(!NT_SUCCESS(status))
     {
         goto cleanup;
@@ -1623,14 +1623,6 @@ HRESULT Sha256Hash(BYTE* pSrc, DWORD srcSize, BYTE* pDst, DWORD dstSize)
     {
         goto cleanup;
     }
-
-    hash = (PBYTE)HeapAlloc(GetProcessHeap(), 0, hashLength);
-    if(NULL == hash)
-    {
-        status = STATUS_NO_MEMORY;
-        goto cleanup;
-    }
-
 
     status = BCryptCreateHash(algHandle, &hashHandle, NULL, 0, NULL, 0, 0);
     if(!NT_SUCCESS(status))
@@ -1655,11 +1647,6 @@ HRESULT Sha256Hash(BYTE* pSrc, DWORD srcSize, BYTE* pDst, DWORD dstSize)
     status = STATUS_SUCCESS;
        
 cleanup:
-    
-    if(NULL != hash)
-    {
-        HeapFree(GetProcessHeap(), 0, hash);
-    }
 
     if (NULL != hashHandle)    
     {
@@ -1671,14 +1658,7 @@ cleanup:
         BCryptCloseAlgorithmProvider(algHandle, 0);
     }
 
-    if (NT_SUCCESS(status))
-    {
-        return S_OK;
-    }
-    else
-    {
-        return S_FALSE;
-    }
+    return status;
 }
 
 #ifdef _PREFAST_
