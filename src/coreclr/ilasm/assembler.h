@@ -1263,6 +1263,8 @@ public:
 
 };
 
+HRESULT sha256_hash(BYTE* pSrc, DWORD srcSize, BYTE* pDst, DWORD dstSize);
+
 #endif  // Assember_h
 
 #ifdef _MSC_VER

@@ -7,7 +7,6 @@
 #include "ilasmpch.h"
 
 #include "assembler.h"
-#include "md5.h"
 
 #include "ceefilegenwriter.h"
 
@@ -1512,12 +1511,9 @@ HRESULT Assembler::CreatePEFile(_In_ __nullterminated WCHAR *pwzOutputFilename)
     IMDInternalEmit* pInternal;
     if (m_pDisp->QueryInterface(IID_IMDInternalEmit, (void**)&pInternal) == S_OK)
     {
-        MD5 md5;
-        MD5HASHDATA hash;
-        md5.Hash(metaData, metaDataSize, &hash);
-
-        REFGUID pMvid = (GUID&)hash;
-        pInternal->ChangeMvid(pMvid);
+        GUID mvid;
+        sha256_hash(metaData, metaDataSize, (BYTE*)&mvid, sizeof(GUID));
+        pInternal->ChangeMvid(mvid);
     }
 
     if(bClock) bClock->cFilegenBegin = GetTickCount();
@@ -1604,6 +1600,132 @@ HRESULT Assembler::CreatePEFile(_In_ __nullterminated WCHAR *pwzOutputFilename)
 exit:
     return hr;
 }
+
+HRESULT sha256_hash(BYTE* pSrc, DWORD srcSize, BYTE* pDst, DWORD dstSize)
+{
+    NTSTATUS status;
+    
+    BCRYPT_ALG_HANDLE   algHandle = NULL;
+    BCRYPT_HASH_HANDLE  hashHandle = NULL;
+    
+    PBYTE   hash = NULL;
+    DWORD   hashLength = 0;
+    DWORD   resultLength = 0;
+
+    //
+    // Open an algorithm handle
+    // This sample passes BCRYPT_HASH_REUSABLE_FLAG with BCryptAlgorithmProvider(...) to load a provider which supports reusable hash
+    //
+    
+    status = BCryptOpenAlgorithmProvider(
+                                        &algHandle,                 // Alg Handle pointer
+                                        BCRYPT_SHA256_ALGORITHM,    // Cryptographic Algorithm name (null terminated unicode string)
+                                        NULL,                       // Provider name; if null, the default provider is loaded
+                                        BCRYPT_HASH_REUSABLE_FLAG); // Flags; Loads a provider which supports reusable hash
+    if(!NT_SUCCESS(status))
+    {
+        goto cleanup;
+    }
+
+    //
+    // Obtain the length of the hash
+    //
+
+     status = BCryptGetProperty(
+                                        algHandle,                  // Handle to a CNG object
+                                        BCRYPT_HASH_LENGTH,         // Property name (null terminated unicode string)
+                                        (PBYTE)&hashLength,         // Address of the output buffer which recieves the property value
+                                        sizeof(hashLength),         // Size of the buffer in bytes
+                                        &resultLength,              // Number of bytes that were copied into the buffer
+                                        0);                         // Flags
+    if(!NT_SUCCESS(status))
+    {
+        goto cleanup;
+    }
+
+    //
+    // Allocate the hash buffer on the heap
+    //
+
+    hash = (PBYTE)HeapAlloc(GetProcessHeap(), 0, hashLength);
+    if(NULL == hash)
+    {
+        status = STATUS_NO_MEMORY;
+        goto cleanup;
+    }
+
+    //
+    // Create a hash handle
+    //
+
+    status = BCryptCreateHash(
+                                        algHandle,                  // Handle to an algorithm provider                 
+                                        &hashHandle,                // A pointer to a hash handle - can be a hash or hmac object
+                                        NULL,                       // Pointer to the buffer that recieves the hash/hmac object
+                                        0,                          // Size of the buffer in bytes
+                                        NULL,                       // A pointer to a key to use for the hash or MAC
+                                        0,                          // Size of the key in bytes
+                                        0);                         // Flags
+    if( !NT_SUCCESS(status) )
+    {
+        goto cleanup;
+    }
+    
+    //
+    // Hash the message(s)
+    // More than one message can be hashed by calling BCryptHashData 
+    //
+   
+    status = BCryptHashData(hashHandle, pSrc, srcSize, 0);
+    if(!NT_SUCCESS(status))
+    {
+        goto cleanup;
+    }
+    
+    //
+    // Obtain the hash of the message(s) into the hash buffer
+    //
+    
+    status = BCryptFinishHash(hashHandle,
+                                        hash,                       // A pointer to a buffer that receives the hash or MAC value
+                                        hashLength,                 // Size of the buffer in bytes
+                                        0);                         // Flags
+    if(!NT_SUCCESS(status))
+    {
+        goto cleanup;
+    }
+
+    memcpy(pDst, hash, min(hashLength, dstSize));
+
+    status = STATUS_SUCCESS;
+       
+cleanup:
+    
+    if(NULL != hash)
+    {
+        HeapFree(GetProcessHeap(), 0, hash);
+    }
+
+    if (NULL != hashHandle)    
+    {
+         BCryptDestroyHash(hashHandle);
+    }
+
+    if(NULL != algHandle)
+    {
+        BCryptCloseAlgorithmProvider(algHandle, 0);
+    }
+
+    if (NT_SUCCESS(status))
+    {
+        return S_OK;
+    }
+    else
+    {
+        return S_FALSE;
+    }
+}
+
 #ifdef _PREFAST_
 #pragma warning(pop)
 #endif
