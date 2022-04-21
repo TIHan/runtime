@@ -1609,7 +1609,7 @@ HRESULT Sha256Hash(BYTE* pSrc, DWORD srcSize, BYTE* pDst, DWORD dstSize)
     BCRYPT_HASH_HANDLE  hashHandle = NULL;
     
     BYTE    hash[32]; // 256 bits
-    DWORD   hashLength = 32;
+    DWORD   hashLength = 0;
     DWORD   resultLength = 0;
 
     status = BCryptOpenAlgorithmProvider(&algHandle, BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_HASH_REUSABLE_FLAG);
@@ -1621,6 +1621,12 @@ HRESULT Sha256Hash(BYTE* pSrc, DWORD srcSize, BYTE* pDst, DWORD dstSize)
     status = BCryptGetProperty(algHandle, BCRYPT_HASH_LENGTH, (PBYTE)&hashLength, sizeof(hashLength), &resultLength, 0);
     if(!NT_SUCCESS(status))
     {
+        goto cleanup;
+    }
+
+    if (hashLength != 32)
+    {
+        status = STATUS_NO_MEMORY;
         goto cleanup;
     }
 
