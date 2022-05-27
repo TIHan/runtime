@@ -15302,6 +15302,16 @@ void Compiler::fgMorphStmts(BasicBlock* block)
         {
             continue;
         }
+
+        // Remove commas
+        while (stmt->GetRootNode()->OperIs(GT_COMMA))
+        {
+            GenTree*   comma   = stmt->GetRootNode();
+            Statement* newStmt = gtNewStmt(comma->gtGetOp1());
+            stmt->SetRootNode(comma->gtGetOp2());
+            fgInsertStmtBefore(block, stmt, newStmt);
+            DEBUG_DESTROY_NODE(comma);
+        }
     }
 
     if (fgRemoveRestOfBlock)
