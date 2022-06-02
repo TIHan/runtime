@@ -3593,6 +3593,97 @@ EXIT:;
     return PhaseStatus::MODIFIED_EVERYTHING;
 }
 
+GenTree* Compiler::fgPreRationalizeSmpOp(GenTreeOp* tree)
+{
+#ifdef TARGET_ARM64
+    if (!tree->OperIs(GT_SUB))
+        return tree;
+
+    GenTree* op1 = tree->gtGetOp1();
+    GenTree* op2 = tree->gtGetOp2();
+
+    if (!(tree->TypeIs(TYP_INT, TYP_LONG) && !tree->IsUnsigned() && op1->OperIs(GT_LCL_VAR)))
+        return tree;
+
+    if (!op2->OperIs(GT_LSH))
+        return tree;
+
+    GenTree* lsh   = op2;
+    GenTree* div   = lsh->gtGetOp1();
+    GenTree* shift = lsh->gtGetOp2();
+    if (div->OperIs(GT_DIV) && shift->IsIntegralConst())
+    {
+        GenTree* a   = div->gtGetOp1();
+        GenTree* cns = div->gtGetOp2();
+        if (a->OperIs(GT_LCL_VAR) && cns->IsIntegralConstPow2() &&
+            op1->AsLclVar()->GetLclNum() == a->AsLclVar()->GetLclNum())
+        {
+            size_t shiftValue = shift->AsIntConCommon()->IntegralValue();
+            size_t cnsValue   = cns->AsIntConCommon()->IntegralValue();
+            if ((cnsValue >> shiftValue) == 1)
+            {
+                tree->ChangeOper(GT_MOD);
+                tree->AsOp()->gtOp2 = cns;
+            }
+        }
+    }
+#endif
+
+    return tree;
+}
+
+PhaseStatus Compiler::fgPreRationalize()
+{
+    class PreRationalizeVisitor final : public GenTreeVisitor<PreRationalizeVisitor>
+    {
+    public:
+        enum
+        {
+            ComputeStack      = false,
+            DoPreOrder        = false,
+            DoPostOrder       = true,
+            UseExecutionOrder = true,
+        };
+
+        PreRationalizeVisitor(Compiler* comp) : GenTreeVisitor<PreRationalizeVisitor>(comp) {}
+
+        //fgWalkResult PreOrderVisit(GenTree** use, GenTree* user)
+        //{
+        //    return Compiler::WALK_CONTINUE;
+        //}
+
+        fgWalkResult PostOrderVisit(GenTree** use, GenTree* user)
+        {
+            GenTree* const tree = *use;
+            if (tree->OperIsSimple())
+            {
+                *use = m_compiler->fgPreRationalizeSmpOp(tree->AsOp());
+            }
+            return Compiler::WALK_CONTINUE;
+        }
+    };
+
+    PreRationalizeVisitor visitor(this);
+
+    for (BasicBlock* const block : Blocks())
+    {
+        compCurBB = block;
+
+        Statement* stmt = block->firstStmt();
+        while (stmt != nullptr)
+        {
+            compCurStmt = stmt;
+
+            visitor.WalkTree(stmt->GetRootNodePointer(), nullptr);
+
+            // Advance the iterator
+            stmt = stmt->GetNextStmt();
+        }
+    }
+
+    return PhaseStatus::MODIFIED_EVERYTHING;
+}
+
 /* static */
 unsigned Compiler::acdHelper(SpecialCodeKind codeKind)
 {

@@ -5228,6 +5228,8 @@ public:
 
     bool fgReorderBlocks(bool useProfile);
 
+    PhaseStatus fgPreRationalize();
+
     PhaseStatus fgDetermineFirstColdBlock();
 
     bool fgIsForwardBranch(BasicBlock* bJump, BasicBlock* bSrc = nullptr);
@@ -5509,6 +5511,8 @@ private:
     GenTreeOp* fgRecognizeAndMorphLongMul(GenTreeOp* mul);
     GenTreeOp* fgMorphLongMul(GenTreeOp* mul);
 #endif
+
+    GenTree* fgPreRationalizeSmpOp(GenTreeOp* tree);
 
     //-------- Determine the order in which the trees will be evaluated -------
 public:

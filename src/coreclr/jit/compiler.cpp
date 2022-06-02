@@ -4999,6 +4999,8 @@ void Compiler::compCompile(void** methodCodePtr, uint32_t* methodCodeSize, JitFl
     //
     DoPhase(this, PHASE_DETERMINE_FIRST_COLD_BLOCK, &Compiler::fgDetermineFirstColdBlock);
 
+    DoPhase(this, PHASE_PRE_RATIONALIZE, &Compiler::fgPreRationalize);
+
 #ifdef DEBUG
     // Stash the current estimate of the function's size if necessary.
     if (verbose)
