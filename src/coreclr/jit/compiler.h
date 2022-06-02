@@ -5512,7 +5512,12 @@ private:
     GenTreeOp* fgMorphLongMul(GenTreeOp* mul);
 #endif
 
-    GenTree* fgPreRationalizeSmpOp(GenTreeOp* tree);
+    GenTree* fgPreRationalizeSub(GenTree* tree);
+#if FEATURE_FIXED_OUT_ARGS
+    GenTree* fgPreRationalizeTree(GenTree* tree, unsigned& outgoingArgSpaceSize);
+#else
+    GenTree* fgPreRationalizeTree(GenTree* tree);
+#endif
 
     //-------- Determine the order in which the trees will be evaluated -------
 public:

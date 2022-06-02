@@ -5027,7 +5027,7 @@ void Compiler::compCompile(void** methodCodePtr, uint32_t* methodCodeSize, JitFl
     // pass of "final lowering."  We must do this before (final) liveness analysis, because this creates
     // range check throw blocks, in which the liveness must be correct.
     //
-    DoPhase(this, PHASE_SIMPLE_LOWERING, &Compiler::fgSimpleLowering);
+   // DoPhase(this, PHASE_SIMPLE_LOWERING, &Compiler::fgSimpleLowering);
 
     // Enable this to gather statistical data such as
     // call and register argument info, flowgraph and loop info, etc.

@@ -3593,11 +3593,9 @@ EXIT:;
     return PhaseStatus::MODIFIED_EVERYTHING;
 }
 
-GenTree* Compiler::fgPreRationalizeSmpOp(GenTreeOp* tree)
+GenTree* Compiler::fgPreRationalizeSub(GenTree* tree)
 {
-#ifdef TARGET_ARM64
-    if (!tree->OperIs(GT_SUB))
-        return tree;
+    assert(tree->OperIs(GT_SUB));
 
     GenTree* op1 = tree->gtGetOp1();
     GenTree* op2 = tree->gtGetOp2();
@@ -3627,7 +3625,107 @@ GenTree* Compiler::fgPreRationalizeSmpOp(GenTreeOp* tree)
             }
         }
     }
+
+    return tree;
+}
+
+#if FEATURE_FIXED_OUT_ARGS
+GenTree* Compiler::fgPreRationalizeTree(GenTree* tree, unsigned& outgoingArgSpaceSize)
+#else
+GenTree* Compiler::fgPreRationalizeTree(GenTree* tree)
 #endif
+{
+    switch (tree->OperGet())
+    {
+        case GT_SUB:
+        {
+#ifdef TARGET_ARM64
+            tree = fgPreRationalizeSub(tree);
+#endif // TARGET_ARM64
+            break;
+        }
+
+        //case GT_ARR_LENGTH:
+        //{
+        //    GenTreeArrLen* arrLen = tree->AsArrLen();
+        //    GenTree*       arr    = arrLen->AsArrLen()->ArrRef();
+        //    GenTree*       add;
+        //    GenTree*       con;
+
+        //    /* Create the expression "*(array_addr + ArrLenOffs)" */
+
+        //    noway_assert(arr->gtNext == tree);
+
+        //    noway_assert(arrLen->ArrLenOffset() == OFFSETOF__CORINFO_Array__length ||
+        //                 arrLen->ArrLenOffset() == OFFSETOF__CORINFO_String__stringLen);
+
+        //    assert(!arr->OperIs(GT_COMMA));
+
+        //    if ((arr->gtOper == GT_CNS_INT) && (arr->AsIntCon()->gtIconVal == 0))
+        //    {
+        //        // If the array is NULL, then we should get a NULL reference
+        //        // exception when computing its length.  We need to maintain
+        //        // an invariant where there is no sum of two constants node, so
+        //        // let's simply return an indirection of NULL.
+
+        //        add = arr;
+        //    }
+        //    else
+        //    {
+        //        con = gtNewIconNode(arrLen->ArrLenOffset(), TYP_I_IMPL);
+        //        add = gtNewOperNode(GT_ADD, TYP_REF, arr, con);
+        //    }
+
+        //    // Change to a GT_IND.
+        //    tree->ChangeOperUnchecked(GT_IND);
+
+        //    tree->AsOp()->gtOp1 = add;
+        //    break;
+        //}
+
+        case GT_BOUNDS_CHECK:
+        {
+            // Add in a call to an error routine.
+            fgSetRngChkTarget(tree, false);
+            break;
+        }
+
+#if FEATURE_FIXED_OUT_ARGS
+        case GT_CALL:
+        {
+            GenTreeCall* call = tree->AsCall();
+            // Fast tail calls use the caller-supplied scratch
+            // space so have no impact on this method's outgoing arg size.
+            if (!call->IsFastTailCall() && !call->IsHelperCall(this, CORINFO_HELP_VALIDATE_INDIRECT_CALL))
+            {
+                // Update outgoing arg size to handle this call
+                const unsigned thisCallOutAreaSize = call->gtArgs.OutgoingArgsStackSize();
+                assert(thisCallOutAreaSize >= MIN_ARG_AREA_FOR_CALL);
+
+                if (thisCallOutAreaSize > outgoingArgSpaceSize)
+                {
+                    JITDUMP("Bumping outgoingArgSpaceSize from %u to %u for call [%06d]\n", outgoingArgSpaceSize,
+                            thisCallOutAreaSize, dspTreeID(tree));
+                    outgoingArgSpaceSize = thisCallOutAreaSize;
+                }
+                else
+                {
+                    JITDUMP("outgoingArgSpaceSize %u sufficient for call [%06d], which needs %u\n",
+                            outgoingArgSpaceSize, dspTreeID(tree), thisCallOutAreaSize);
+                }
+            }
+            else
+            {
+                JITDUMP("outgoingArgSpaceSize not impacted by fast tail call [%06d]\n", dspTreeID(tree));
+            }
+            break;
+        }
+#endif // FEATURE_FIXED_OUT_ARGS
+
+        default:
+            break;
+
+    }
 
     return tree;
 }
@@ -3645,6 +3743,11 @@ PhaseStatus Compiler::fgPreRationalize()
             UseExecutionOrder = true,
         };
 
+#if FEATURE_FIXED_OUT_ARGS
+        unsigned m_outgoingArgSpaceSize = 0;
+#endif // FEATURE_FIXED_OUT_ARGS
+
+
         PreRationalizeVisitor(Compiler* comp) : GenTreeVisitor<PreRationalizeVisitor>(comp) {}
 
         //fgWalkResult PreOrderVisit(GenTree** use, GenTree* user)
@@ -3654,11 +3757,11 @@ PhaseStatus Compiler::fgPreRationalize()
 
         fgWalkResult PostOrderVisit(GenTree** use, GenTree* user)
         {
-            GenTree* const tree = *use;
-            if (tree->OperIsSimple())
-            {
-                *use = m_compiler->fgPreRationalizeSmpOp(tree->AsOp());
-            }
+#if FEATURE_FIXED_OUT_ARGS
+            *use = m_compiler->fgPreRationalizeTree(*use, m_outgoingArgSpaceSize);
+#else // FEATURE_FIXED_OUT_ARGS
+            *use = m_compiler->fgPreRationalizeTree(*use);
+#endif
             return Compiler::WALK_CONTINUE;
         }
     };
@@ -3680,6 +3783,65 @@ PhaseStatus Compiler::fgPreRationalize()
             stmt = stmt->GetNextStmt();
         }
     }
+
+    #if FEATURE_FIXED_OUT_ARGS
+    // Finish computing the outgoing args area size
+    //
+    // Need to make sure the MIN_ARG_AREA_FOR_CALL space is added to the frame if:
+    // 1. there are calls to THROW_HELPER methods.
+    // 2. we are generating profiling Enter/Leave/TailCall hooks. This will ensure
+    //    that even methods without any calls will have outgoing arg area space allocated.
+    // 3. We will be generating calls to PInvoke helpers. TODO: This shouldn't be required because
+    //    if there are any calls to PInvoke methods, there should be a call that we processed
+    //    above. However, we still generate calls to PInvoke prolog helpers even if we have dead code
+    //    eliminated all the calls.
+    // 4. We will be generating a stack cookie check. In this case we can call a helper to fail fast.
+    //
+    // An example for these two cases is Windows Amd64, where the ABI requires to have 4 slots for
+    // the outgoing arg space if the method makes any calls.
+    if (visitor.m_outgoingArgSpaceSize < MIN_ARG_AREA_FOR_CALL)
+    {
+        if (compUsesThrowHelper || compIsProfilerHookNeeded() ||
+            (compMethodRequiresPInvokeFrame() && !opts.ShouldUsePInvokeHelpers()) || getNeedsGSSecurityCookie())
+        {
+            visitor.m_outgoingArgSpaceSize = MIN_ARG_AREA_FOR_CALL;
+            JITDUMP("Bumping outgoingArgSpaceSize to %u for possible helper or profile hook call",
+                    visitor.m_outgoingArgSpaceSize);
+        }
+    }
+
+    // If a function has localloc, we will need to move the outgoing arg space when the
+    // localloc happens. When we do this, we need to maintain stack alignment. To avoid
+    // leaving alignment-related holes when doing this move, make sure the outgoing
+    // argument space size is a multiple of the stack alignment by aligning up to the next
+    // stack alignment boundary.
+    if (compLocallocUsed)
+    {
+        visitor.m_outgoingArgSpaceSize = roundUp(visitor.m_outgoingArgSpaceSize, STACK_ALIGN);
+        JITDUMP("Bumping outgoingArgSpaceSize to %u for localloc", visitor.m_outgoingArgSpaceSize);
+    }
+
+    assert((visitor.m_outgoingArgSpaceSize % TARGET_POINTER_SIZE) == 0);
+
+    // Publish the final value and mark it as read only so any update
+    // attempt later will cause an assert.
+    lvaOutgoingArgSpaceSize = visitor.m_outgoingArgSpaceSize;
+    lvaOutgoingArgSpaceSize.MarkAsReadOnly();
+
+#endif // FEATURE_FIXED_OUT_ARGS
+
+#ifdef DEBUG
+    if (verbose && fgRngChkThrowAdded)
+    {
+        printf("\nAfter fgPreRationalize() added some RngChk throw blocks");
+        fgDispBasicBlocks();
+        fgDispHandlerTab();
+        printf("\n");
+    }
+
+    fgDebugCheckBBlist();
+ //   fgDebugCheckLinks();
+#endif
 
     return PhaseStatus::MODIFIED_EVERYTHING;
 }

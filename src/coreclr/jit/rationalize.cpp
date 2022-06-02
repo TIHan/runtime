@@ -552,6 +552,43 @@ Compiler::fgWalkResult Rationalizer::RewriteNode(GenTree** useEdge, Compiler::Ge
     assert(node == use.Def());
     switch (node->OperGet())
     {
+        case GT_ARR_LENGTH:
+        {
+            GenTreeArrLen* arrLen = node->AsArrLen();
+            GenTree*       arr    = arrLen->AsArrLen()->ArrRef();
+            GenTree*       add;
+            GenTree*       con;
+
+            /* Create the expression "*(array_addr + ArrLenOffs)" */
+
+            noway_assert(arr->gtNext == node);
+
+            noway_assert(arrLen->ArrLenOffset() == OFFSETOF__CORINFO_Array__length ||
+                         arrLen->ArrLenOffset() == OFFSETOF__CORINFO_String__stringLen);
+
+            if ((arr->gtOper == GT_CNS_INT) && (arr->AsIntCon()->gtIconVal == 0))
+            {
+                // If the array is NULL, then we should get a NULL reference
+                // exception when computing its length.  We need to maintain
+                // an invariant where there is no sum of two constants node, so
+                // let's simply return an indirection of NULL.
+
+                add = arr;
+            }
+            else
+            {
+                con = comp->gtNewIconNode(arrLen->ArrLenOffset(), TYP_I_IMPL);
+                add = comp->gtNewOperNode(GT_ADD, TYP_REF, arr, con);
+
+                BlockRange().InsertAfter(arr, con, add);
+            }
+
+            // Change to a GT_IND.
+            node->ChangeOperUnchecked(GT_IND);
+
+            node->AsOp()->gtOp1 = add;
+            break;
+        }
         case GT_ASG:
             RewriteAssignment(use);
             break;
