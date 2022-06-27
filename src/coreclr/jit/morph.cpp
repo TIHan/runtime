@@ -13811,7 +13811,7 @@ GenTree* Compiler::fgMorphSmpOpOptional(GenTreeOp* tree)
             }
 
 #ifdef TARGET_ARM64
-            // Try to recognize ubfiz/sbfiz idiom in LSH(CAST(X), CNS) tree
+            // Try to recognize LSH(CAST(X), CNS) tree
             if (opts.OptimizationEnabled() && tree->IsOptimalLshCastCnsInt())
             {
                 JITDUMP("Recognized LSH(CAST(X), CNS_INT). Setting DoNotCse for op1 and op2.");
