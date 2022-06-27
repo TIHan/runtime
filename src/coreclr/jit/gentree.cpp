@@ -7740,6 +7740,39 @@ void GenTreeOp::CheckDivideByConstOptimized(Compiler* comp)
     }
 }
 
+#ifdef TARGET_ARM64
+//----------------------------------------------------------------------------
+// IsOptimalLshCastCnsInt:
+//    Returns true if tree is an optimal pattern of LSH(CAST(X), CNS) for ARM64
+//
+// Return Value:
+//    Returns true if tree is an optimal pattern of LSH(CAST(X), CNS) for ARM64
+//
+bool GenTreeOp::IsOptimalLshCastCnsInt() const
+{
+    if (OperIs(GT_LSH) && gtGetOp1()->OperIs(GT_CAST) && gtGetOp2()->IsCnsIntOrI())
+    {
+        GenTreeIntCon* cns  = gtGetOp2()->AsIntCon();
+        GenTreeCast*   cast = gtGetOp1()->AsCast();
+
+        if (!cast->gtOverflow() &&
+            // Smaller CastOp is most likely an IND(X) node which is lowered to a zero-extend load
+            cast->CastOp()->TypeIs(TYP_LONG, TYP_INT))
+        {
+            // Cast is either "TYP_LONG <- TYP_INT" or "TYP_INT <- %SMALL_INT% <- TYP_INT" (signed or unsigned)
+            unsigned dstBits = genTypeSize(cast) * BITS_PER_BYTE;
+            unsigned srcBits = varTypeIsSmall(cast->CastToType()) ? genTypeSize(cast->CastToType()) * BITS_PER_BYTE
+                                                                  : genTypeSize(cast->CastOp()) * BITS_PER_BYTE;
+
+            // It has to be an upcast and CNS must be in [1..srcBits) range
+            return (srcBits < dstBits) && (cns->IconValue() > 0) && (cns->IconValue() < srcBits);
+        }
+    }
+
+    return false;
+}
+#endif
+
 //
 //------------------------------------------------------------------------
 // gtBlockOpInit: Initializes a BlkOp GenTree

@@ -2171,7 +2171,7 @@ public:
 
     inline bool IsCnsNonZeroFltOrDbl() const;
 
-    inline bool IsCnsVec() const;
+    bool IsCnsVec() const;
 
     bool IsIconHandle() const
     {
@@ -2983,6 +2983,10 @@ struct GenTreeOp : public GenTreeUnOp
     {
         return (gtFlags & GTF_DIV_BY_CNS_OPT) != 0;
     }
+
+#ifdef TARGET_ARM64
+    bool IsOptimalLshCastCnsInt() const;
+#endif
 
 #if !defined(TARGET_64BIT) || defined(TARGET_ARM64)
     bool IsValidLongMul();
