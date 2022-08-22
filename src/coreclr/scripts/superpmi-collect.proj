@@ -92,6 +92,11 @@
     <WorkItemTimeout>3:00</WorkItemTimeout>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(CollectionName)' == 'fsharp'">
+    <WorkItemCommand>$(Python) $(SuperPMIDirectory)/superpmi_fsharp.py -performance_directory $(PerformanceDirectory) -superpmi_directory $(SuperPMIDirectory) -core_root $(SuperPMIDirectory) -arch $(Architecture)</WorkItemCommand>
+    <WorkItemTimeout>5:00</WorkItemTimeout>
+  </PropertyGroup>
+
   <PropertyGroup>
     <EnableAzurePipelinesReporter>false</EnableAzurePipelinesReporter>
     <EnableXUnitReporter>false</EnableXUnitReporter>

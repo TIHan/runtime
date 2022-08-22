@@ -474,6 +474,13 @@ def main(main_args):
     if coreclr_args.collection_name == "benchmarks":
         # Setup microbenchmarks
         setup_microbenchmark(workitem_directory, arch)
+    elif coreclr_args.collection_name == "fsharp":
+        run_command(
+            ["git", "clone", "--quiet", "--depth", "1", "https://github.com/dotnet/sdk"], coreclr_args.input_directory, _exit_on_fail=True)
+        run_command(
+            [coreclr_args.input_directory + "\\sdk\\build.cmd", "-c", "Release"], coreclr_args.input_directory, _exit_on_fail=True)
+        run_command(
+            ["git", "clone", "--quiet", "--depth", "1", "https://github.com/dotnet/fsharp"], coreclr_args.input_directory, _exit_on_fail=True)
     else:
         # Setup for pmi/crossgen runs
 
