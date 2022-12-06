@@ -10554,6 +10554,44 @@ GenTree* Compiler::fgOptimizeCast(GenTreeCast* cast)
         }
     }
 
+    if (opts.OptimizationEnabled() && optLocalAssertionProp && cast->CastOp()->OperIs(GT_LCL_VAR) &&
+        !cast->gtOverflow() && varTypeIsIntegral(cast))
+    {
+        GenTreeLclVarCommon* lclVar = cast->CastOp()->AsLclVarCommon();
+
+        if (gtIsActiveCSE_Candidate(cast) || gtIsActiveCSE_Candidate(lclVar))
+            return cast;
+
+        LclVarDsc* varDsc = lvaGetDesc(lclVar->GetLclNum());
+
+        if (varDsc->lvNormalizeOnLoad())
+            return cast;
+
+        var_types lclVarType = varDsc->TypeGet();
+
+        if (!varTypeIsIntegral(lclVarType) || lclVarType == TYP_BOOL)
+            return cast;
+
+        var_types castToType = cast->CastToType();
+
+        if (!varTypeIsIntegral(castToType) || castToType == TYP_BOOL)
+            return cast;
+
+        if (genTypeSize(castToType) <= genTypeSize(lclVar))
+            return cast;
+
+        if ((lclVar->TypeGet() == varDsc->TypeGet()) && (genActualType(cast) == genActualType(castToType))  &&
+            optAssertionIsSubrange(lclVar, IntegralRange::ForType(castToType), apFull) != NO_ASSERTION_INDEX)
+        {
+            cast->SetDoNotCSE();
+            cast->gtFlags |= GTF_CAST_IGNORE;
+
+         //   lclVar->ChangeType(castToType);
+
+            return cast;
+        }
+    }
+
     return cast;
 }
 

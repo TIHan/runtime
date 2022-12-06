@@ -57,7 +57,8 @@ bool IntegralRange::Contains(int64_t value) const
         CORINFO_Array_MaxLength, // SymbolicIntegerValue::ArrayLenMax
         INT32_MAX,               // SymbolicIntegerValue::IntMax
         UINT32_MAX,              // SymbolicIntegerValue::UIntMax
-        INT64_MAX                // SymbolicIntegerValue::LongMax
+        INT64_MAX,               // SymbolicIntegerValue::LongMax
+        UINT64_MAX               // SymbolicIntegerValue::ULongMax
     };
 
     assert(sizeof(SymbolicIntegerValue) == sizeof(int32_t));
@@ -84,6 +85,8 @@ bool IntegralRange::Contains(int64_t value) const
         case TYP_BOOL:
         case TYP_UBYTE:
         case TYP_USHORT:
+        case TYP_UINT:
+        case TYP_ULONG:
             return SymbolicIntegerValue::Zero;
         case TYP_BYTE:
             return SymbolicIntegerValue::ByteMin;
@@ -126,6 +129,8 @@ bool IntegralRange::Contains(int64_t value) const
             return SymbolicIntegerValue::UIntMax;
         case TYP_LONG:
             return SymbolicIntegerValue::LongMax;
+        case TYP_ULONG:
+            return SymbolicIntegerValue::ULongMax;
         default:
             unreached();
     }

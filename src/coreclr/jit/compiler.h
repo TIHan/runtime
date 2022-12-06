@@ -1221,6 +1221,7 @@ enum class SymbolicIntegerValue : int32_t
     IntMax,
     UIntMax,
     LongMax,
+    ULongMax,
 };
 
 inline constexpr bool operator>(SymbolicIntegerValue left, SymbolicIntegerValue right)
