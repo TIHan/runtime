@@ -3015,6 +3015,38 @@ PhaseStatus Compiler::fgSimpleLowering()
                     break;
                 }
 
+                case GT_CAST:
+                {
+                    if (opts.OptimizationDisabled())
+                        break;
+
+                    if (tree->gtOverflow())
+                        break;
+
+                    if (varTypeIsIntegral(tree) && !varTypeIsSmall(tree))
+                    {
+                        GenTreeCast* cast = tree->AsCast();
+                        GenTree*     castOp = cast->CastOp();
+
+                        if ((genActualType(cast->CastToType()) == genActualType(tree)) && castOp->OperIs(GT_LCL_VAR))
+                        {
+                            GenTreeLclVarCommon* lclVar = castOp->AsLclVarCommon();
+                            LclVarDsc*           varDsc = lvaGetDesc(lclVar->GetLclNum());
+
+                            if (varDsc->lvNormalizeOnLoad())
+                                break;
+
+                            if (genTypeSize(tree) > genTypeSize(lclVar))
+                            {
+                                cast->gtFlags |= GTF_CAST_IGNORE;
+                                break;
+                            }
+                        }
+                    }
+
+                    break;
+                }
+
 #if FEATURE_FIXED_OUT_ARGS
                 case GT_CALL:
                 {
