@@ -6864,10 +6864,19 @@ void CodeGen::genIntToIntCast(GenTreeCast* cast)
 
     assert(genIsValidIntReg(dstReg));
 
-    if ((cast->gtFlags & GTF_CAST_IGNORE) && (dstReg == srcReg) && !src->isContained())
+    if (compiler->opts.OptimizationEnabled() && !cast->gtOverflow() && (dstReg == srcReg) &&
+        varTypeIsUnsigned(cast->CastToType()) && !src->isContained() && src->OperIs(GT_LCL_VAR))
     {
-        genProduceReg(cast);
-        return;
+        GenTreeLclVarCommon* lclVar = src->AsLclVarCommon();
+        LclVarDsc*           varDsc = compiler->lvaGetDesc(lclVar->GetLclNum());
+
+        if ((varDsc->TypeGet() == src->TypeGet()) && !varDsc->lvNormalizeOnLoad() &&
+            varDsc->lvNormalizeOnStore() &&
+            (genTypeSize(cast->CastToType()) > genTypeSize(lclVar)))
+        {
+            genProduceReg(cast);
+            return;
+        }
     }
 
     GenIntCastDesc desc(cast);

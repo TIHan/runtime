@@ -3036,12 +3036,15 @@ PhaseStatus Compiler::fgSimpleLowering()
                             if (varDsc->lvNormalizeOnLoad())
                                 break;
 
-                            if (lclVar->TypeGet() != varDsc->TypeGet() || !lclVar->TypeIs(TYP_INT))
+                            if (lclVar->TypeGet() != varDsc->TypeGet())
+                                break;
+
+                            if (!varTypeIsUnsigned(cast->CastToType()))
                                 break;
 
                             if (genTypeSize(tree) > genTypeSize(lclVar))
                             {
-                              //  cast->gtFlags |= GTF_CAST_IGNORE;
+                            //    cast->gtFlags |= GTF_CAST_IGNORE;
                                 break;
                             }
                         }
