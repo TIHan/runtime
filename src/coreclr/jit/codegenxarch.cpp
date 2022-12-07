@@ -6870,19 +6870,19 @@ void CodeGen::genIntToIntCast(GenTreeCast* cast)
     //    return;
     //}
 
-        // if (compiler->opts.OptimizationEnabled() && !cast->gtOverflow() && (dstReg == srcReg) &&
-    //    varTypeIsUnsigned(cast->CastToType()) && !src->isContained() && src->OperIs(GT_LCL_VAR))
-    //{
-    //    GenTreeLclVarCommon* lclVar = src->AsLclVarCommon();
-    //    LclVarDsc*           varDsc = compiler->lvaGetDesc(lclVar->GetLclNum());
+    if (compiler->opts.OptimizationEnabled() && !cast->gtOverflow() && (dstReg == srcReg) &&
+        varTypeIsUnsigned(cast->CastToType()) && !src->isContained() && src->OperIs(GT_LCL_VAR))
+    {
+        GenTreeLclVarCommon* lclVar = src->AsLclVarCommon();
+        LclVarDsc*           varDsc = compiler->lvaGetDesc(lclVar->GetLclNum());
 
-    //    if (!src->TypeIs(TYP_BOOL) && (varDsc->TypeGet() == src->TypeGet()) && !varDsc->lvNormalizeOnLoad() &&
-    //        (genTypeSize(cast->CastToType()) > genTypeSize(lclVar)))
-    //    {
-    //        genProduceReg(cast);
-    //        return;
-    //    }
-    //}
+        if (!src->TypeIs(TYP_BOOL) && (varDsc->TypeGet() == src->TypeGet()) && !varDsc->lvNormalizeOnLoad() &&
+            (genTypeSize(cast->CastToType()) > genTypeSize(lclVar)) && emit->AreUpper32BitsZero(dstReg))
+        {
+            genProduceReg(cast);
+            return;
+        }
+    }
 
     GenIntCastDesc desc(cast);
 
