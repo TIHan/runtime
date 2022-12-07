@@ -10399,6 +10399,20 @@ DONE_MORPHING_CHILDREN:
         }
     }
 
+    if (tree->OperIs(GT_ADD, GT_SUB, GT_MUL, GT_AND, GT_OR, GT_XOR, GT_NOT, GT_NEG))
+    {
+        if (tree->gtGetOp1()->OperIs(GT_CAST))
+        {
+            fgOptimizeCastIgnore(tree->gtGetOp1()->AsCast());
+        }
+
+        if (tree->OperIsBinary() && tree->gtGetOp2()->OperIs(GT_CAST))
+        {
+            fgOptimizeCastIgnore(tree->gtGetOp2()->AsCast());
+        }
+    }
+
+
     /*-------------------------------------------------------------------------
      * Optional morphing is done if tree transformations is permitted
      */
@@ -10451,6 +10465,45 @@ void Compiler::fgTryReplaceStructLocalWithField(GenTree* tree)
                     lclVar->GetLclNum(), fieldLclNum, dspTreeID(tree));
             lclVar->SetLclNum(fieldLclNum);
             lclVar->ChangeType(fieldDsc->lvType);
+        }
+    }
+}
+
+void Compiler::fgOptimizeCastIgnore(GenTreeCast* cast)
+{
+    if (opts.OptimizationEnabled() && cast->CastOp()->OperIs(GT_LCL_VAR) &&
+        !cast->gtOverflow() && varTypeIsIntegral(cast))
+    {
+        GenTreeLclVarCommon* lclVar = cast->CastOp()->AsLclVarCommon();
+
+        if (gtIsActiveCSE_Candidate(cast) || gtIsActiveCSE_Candidate(lclVar))
+            return;
+
+        LclVarDsc* varDsc = lvaGetDesc(lclVar->GetLclNum());
+
+        if (varDsc->lvNormalizeOnLoad())
+            return;
+
+        if (varDsc->lvNormalizeOnStore())
+            return;
+
+        var_types lclVarType = varDsc->TypeGet();
+
+        if (!varTypeIsIntegral(lclVarType) || lclVarType == TYP_BOOL)
+            return;
+
+        var_types castToType = cast->CastToType();
+
+        if (!varTypeIsIntegral(castToType) || castToType == TYP_BOOL)
+            return;
+
+        if (genTypeSize(castToType) <= genTypeSize(lclVar))
+            return;
+
+        if ((lclVar->TypeGet() == varDsc->TypeGet()) &&
+            (genActualType(cast) == genActualType(castToType)))
+        {
+            cast->gtFlags |= GTF_CAST_IGNORE;
         }
     }
 }
@@ -10551,44 +10604,6 @@ GenTree* Compiler::fgOptimizeCast(GenTreeCast* cast)
                 cast->CastOp() = src->AsCast()->CastOp();
                 DEBUG_DESTROY_NODE(src);
             }
-        }
-    }
-
-    if (opts.OptimizationEnabled() && optLocalAssertionProp && cast->CastOp()->OperIs(GT_LCL_VAR) &&
-        !cast->gtOverflow() && varTypeIsIntegral(cast))
-    {
-        GenTreeLclVarCommon* lclVar = cast->CastOp()->AsLclVarCommon();
-
-        if (gtIsActiveCSE_Candidate(cast) || gtIsActiveCSE_Candidate(lclVar))
-            return cast;
-
-        LclVarDsc* varDsc = lvaGetDesc(lclVar->GetLclNum());
-
-        if (varDsc->lvNormalizeOnLoad())
-            return cast;
-
-        if (varDsc->lvNormalizeOnStore())
-            return cast;
-
-        var_types lclVarType = varDsc->TypeGet();
-
-        if (!varTypeIsIntegral(lclVarType) || lclVarType == TYP_BOOL)
-            return cast;
-
-        var_types castToType = cast->CastToType();
-
-        if (!varTypeIsIntegral(castToType) || castToType == TYP_BOOL)
-            return cast;
-
-        if (genTypeSize(castToType) <= genTypeSize(lclVar))
-            return cast;
-
-        if ((lclVar->TypeGet() == varDsc->TypeGet()) && (genActualType(cast) == genActualType(castToType)))// &&
-          //  optAssertionIsSubrange(lclVar, IntegralRange::ForType(lclVar->TypeGet()), apFull) != NO_ASSERTION_INDEX)
-        {
-          //  cast->gtFlags |= GTF_CAST_IGNORE;
-
-            return cast;
         }
     }
 
