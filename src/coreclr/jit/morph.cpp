@@ -10580,13 +10580,10 @@ GenTree* Compiler::fgOptimizeCast(GenTreeCast* cast)
         if (genTypeSize(castToType) <= genTypeSize(lclVar))
             return cast;
 
-        if ((lclVar->TypeGet() == varDsc->TypeGet()) && (genActualType(cast) == genActualType(castToType))  &&
+        if ((lclVar->TypeGet() == varDsc->TypeGet()) && (genActualType(cast) == genActualType(castToType)) &&
             optAssertionIsSubrange(lclVar, IntegralRange::ForType(castToType), apFull) != NO_ASSERTION_INDEX)
         {
-            cast->SetDoNotCSE();
             cast->gtFlags |= GTF_CAST_IGNORE;
-
-         //   lclVar->ChangeType(castToType);
 
             return cast;
         }
