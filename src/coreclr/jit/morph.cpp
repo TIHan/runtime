@@ -10567,6 +10567,9 @@ GenTree* Compiler::fgOptimizeCast(GenTreeCast* cast)
         if (varDsc->lvNormalizeOnLoad())
             return cast;
 
+        if (varDsc->lvNormalizeOnStore())
+            return cast;
+
         var_types lclVarType = varDsc->TypeGet();
 
         if (!varTypeIsIntegral(lclVarType) || lclVarType == TYP_BOOL)
@@ -10583,7 +10586,7 @@ GenTree* Compiler::fgOptimizeCast(GenTreeCast* cast)
         if ((lclVar->TypeGet() == varDsc->TypeGet()) && (genActualType(cast) == genActualType(castToType)))// &&
           //  optAssertionIsSubrange(lclVar, IntegralRange::ForType(lclVar->TypeGet()), apFull) != NO_ASSERTION_INDEX)
         {
-         //   cast->gtFlags |= GTF_CAST_IGNORE;
+          //  cast->gtFlags |= GTF_CAST_IGNORE;
 
             return cast;
         }
