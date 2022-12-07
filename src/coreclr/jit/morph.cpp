@@ -10581,11 +10581,11 @@ GenTree* Compiler::fgOptimizeCast(GenTreeCast* cast)
             return cast;
 
         if ((lclVar->TypeGet() == varDsc->TypeGet()) && (genActualType(cast) == genActualType(castToType)) &&
-            optAssertionIsSubrange(lclVar, IntegralRange::ForType(castToType), apFull) != NO_ASSERTION_INDEX)
+            optAssertionIsSubrange(lclVar, IntegralRange::ForType(lclVar->TypeGet()), apFull) != NO_ASSERTION_INDEX)
         {
-            cast->gtFlags |= GTF_CAST_IGNORE;
+        //    cast->gtFlags |= GTF_CAST_IGNORE;
 
-            return cast;
+          //  return cast;
         }
     }
 
