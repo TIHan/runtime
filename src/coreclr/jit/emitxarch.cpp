@@ -1000,6 +1000,10 @@ bool emitter::TakesRexWPrefix(instruction ins, emitAttr attr)
     // cased here.
     if (ins == INS_movsx)
     {
+        if (attr < EA_8BYTE)
+        {
+            return false;
+        }
         return true;
     }
 
@@ -10239,7 +10243,7 @@ void emitter::emitDispIns(
 #endif
                 if (ins == INS_movsx || ins == INS_movzx)
             {
-                attr = EA_PTRSIZE;
+             //   attr = id->idOpSize();
             }
             else if ((ins == INS_crc32) && (attr != EA_8BYTE))
             {
@@ -13456,7 +13460,7 @@ BYTE* emitter::emitOutputRR(BYTE* dst, instrDesc* id)
 #ifdef TARGET_AMD64
 
         assert((size < EA_4BYTE) || (insIsCMOV(ins)));
-        if ((size == EA_8BYTE) || (ins == INS_movsx))
+        if ((size == EA_8BYTE))
         {
             code = AddRexWPrefix(ins, code);
         }

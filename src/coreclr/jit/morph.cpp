@@ -10507,7 +10507,7 @@ void Compiler::fgOptimizeCastIgnore(GenTreeCast* cast)
       //  {
             if ((lclVar->TypeGet() == varDsc->TypeGet()) && (genActualType(cast) == genActualType(castToType)))
             {
-                cast->gtFlags |= GTF_CAST_IGNORE;
+            //    cast->gtFlags |= GTF_CAST_IGNORE;
             }
       //  }
     }
