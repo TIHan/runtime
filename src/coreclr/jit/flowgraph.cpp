@@ -3044,7 +3044,7 @@ PhaseStatus Compiler::fgSimpleLowering()
 
                             if (genTypeSize(tree) > genTypeSize(lclVar))
                             {
-                            //    cast->gtFlags |= GTF_CAST_IGNORE;
+                               // cast->gtFlags |= GTF_CAST_IGNORE;
                                 break;
                             }
                         }

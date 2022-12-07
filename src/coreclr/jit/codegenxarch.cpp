@@ -6864,11 +6864,11 @@ void CodeGen::genIntToIntCast(GenTreeCast* cast)
 
     assert(genIsValidIntReg(dstReg));
 
-    if ((cast->gtFlags & GTF_CAST_IGNORE) && (dstReg == srcReg) && !src->isContained())
-    {
-        genProduceReg(cast);
-        return;
-    }
+    //if ((cast->gtFlags & GTF_CAST_IGNORE) && (dstReg == srcReg) && !src->isContained())
+    //{
+    //    genProduceReg(cast);
+    //    return;
+    //}
 
         // if (compiler->opts.OptimizationEnabled() && !cast->gtOverflow() && (dstReg == srcReg) &&
     //    varTypeIsUnsigned(cast->CastToType()) && !src->isContained() && src->OperIs(GT_LCL_VAR))
