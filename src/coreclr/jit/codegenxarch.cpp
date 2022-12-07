@@ -6864,20 +6864,25 @@ void CodeGen::genIntToIntCast(GenTreeCast* cast)
 
     assert(genIsValidIntReg(dstReg));
 
-    if (compiler->opts.OptimizationEnabled() && !cast->gtOverflow() && (dstReg == srcReg) &&
-        varTypeIsUnsigned(cast->CastToType()) && !src->isContained() && src->OperIs(GT_LCL_VAR))
+    if ((cast->gtFlags & GTF_CAST_IGNORE) && (dstReg == srcReg) && !src->isContained())
     {
-        GenTreeLclVarCommon* lclVar = src->AsLclVarCommon();
-        LclVarDsc*           varDsc = compiler->lvaGetDesc(lclVar->GetLclNum());
-
-        if ((varDsc->TypeGet() == src->TypeGet()) && !varDsc->lvNormalizeOnLoad() &&
-            varDsc->lvNormalizeOnStore() &&
-            (genTypeSize(cast->CastToType()) > genTypeSize(lclVar)))
-        {
-            genProduceReg(cast);
-            return;
-        }
+        genProduceReg(cast);
+        return;
     }
+
+        // if (compiler->opts.OptimizationEnabled() && !cast->gtOverflow() && (dstReg == srcReg) &&
+    //    varTypeIsUnsigned(cast->CastToType()) && !src->isContained() && src->OperIs(GT_LCL_VAR))
+    //{
+    //    GenTreeLclVarCommon* lclVar = src->AsLclVarCommon();
+    //    LclVarDsc*           varDsc = compiler->lvaGetDesc(lclVar->GetLclNum());
+
+    //    if (!src->TypeIs(TYP_BOOL) && (varDsc->TypeGet() == src->TypeGet()) && !varDsc->lvNormalizeOnLoad() &&
+    //        (genTypeSize(cast->CastToType()) > genTypeSize(lclVar)))
+    //    {
+    //        genProduceReg(cast);
+    //        return;
+    //    }
+    //}
 
     GenIntCastDesc desc(cast);
 
