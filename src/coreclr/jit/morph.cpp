@@ -10503,13 +10503,13 @@ void Compiler::fgOptimizeCastIgnore(GenTreeCast* cast)
         if (!varTypeIsUnsigned(castToType))
             return;
 
-       // if (optLocalAssertionProp)
-      //  {
+        if (optLocalAssertionProp)
+        {
             if ((lclVar->TypeGet() == varDsc->TypeGet()) && (genActualType(cast) == genActualType(castToType)))
             {
-            //    cast->gtFlags |= GTF_CAST_IGNORE;
+                cast->gtFlags |= GTF_CAST_IGNORE;
             }
-      //  }
+        }
     }
 }
 
