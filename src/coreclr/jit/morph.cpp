@@ -9151,7 +9151,8 @@ GenTree* Compiler::fgMorphSmpOp(GenTree* tree, MorphAddrContext* mac, bool* optA
 
             if (!optValnumCSE_phase)
             {
-                if (tree->OperIs(GT_MOD, GT_UMOD) && (op2->IsIntegralConst(1)))
+                if (tree->MatchOp2<GT_MOD, GT_UMOD>(&op2) && op2->IsIntegralConst(1))
+              //  if (tree->OperIs(GT_MOD, GT_UMOD) && (op2->IsIntegralConst(1)))
                 {
                     // Transformation: a % 1 = 0
                     GenTree* optimizedTree = fgMorphModToZero(tree->AsOp());

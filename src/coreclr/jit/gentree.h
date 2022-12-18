@@ -1099,6 +1099,18 @@ public:
         return false;
     }
 
+    template <genTreeOps... T>
+    bool MatchOp2(GenTree** op2)
+    {
+        static_assert(AllOperIsBinary(T...) && "Not a binary operator!");
+        if (OperIs(T...))
+        {
+            *op2 = gtGetOp2();
+            return true;
+        }
+        return false;
+    }
+
     static bool IsExOp(unsigned opKind)
     {
         return (opKind & GTK_EXOP) != 0;
