@@ -687,6 +687,11 @@ inline GenTreeDebugFlags& operator &=(GenTreeDebugFlags& a, GenTreeDebugFlags b)
 #include <pshpack4.h>
 #endif
 
+constexpr unsigned char gtOperKindTable[] = {
+#define GTNODE(en, st, cm, ok) ((ok)&GTK_MASK) + GTK_COMMUTE *cm,
+#include "gtlist.h"
+};
+
 struct GenTree
 {
 // We use GT_STRUCT_0 only for the category of simple ops.
@@ -1057,9 +1062,7 @@ public:
     int gtUseNum; // use-ordered traversal within the function
 #endif
 
-    static const unsigned char gtOperKindTable[];
-
-    static unsigned OperKind(unsigned gtOper)
+    static constexpr unsigned OperKind(unsigned gtOper)
     {
         assert(gtOper < GT_COUNT);
 
@@ -1068,9 +1071,32 @@ public:
 
     unsigned OperKind() const
     {
-        assert(gtOper < GT_COUNT);
+        return OperKind(gtOper);
+    }
 
-        return gtOperKindTable[gtOper];
+    template <genTreeOps T>
+    bool Match(GenTree** op1)
+    {
+        static_assert(OperIsUnary(T) && "Not an unary operator!");
+        if (OperIs(T))
+        {
+            *op1 = gtGetOp1();
+            return true;
+        }
+        return false;
+    }
+
+    template <genTreeOps... T>
+    bool Match(GenTree** op1, GenTree** op2)
+    {
+        static_assert(OperIsBinary(T) && "Not a binary operator!");
+        if (OperIs(T))
+        {
+            *op1 = gtGetOp1();
+            *op2 = gtGetOp2();
+            return true;
+        }
+        return false;
     }
 
     static bool IsExOp(unsigned opKind)
@@ -1469,7 +1495,7 @@ public:
     }
 #endif // TARGET_XARCH
 
-    static bool OperIsUnary(genTreeOps gtOper)
+    static constexpr bool OperIsUnary(genTreeOps gtOper)
     {
         return (OperKind(gtOper) & GTK_UNOP) != 0;
     }
@@ -1479,7 +1505,7 @@ public:
         return OperIsUnary(gtOper);
     }
 
-    static bool OperIsBinary(genTreeOps gtOper)
+    static constexpr bool OperIsBinary(genTreeOps gtOper)
     {
         return (OperKind(gtOper) & GTK_BINOP) != 0;
     }

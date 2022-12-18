@@ -9151,6 +9151,11 @@ GenTree* Compiler::fgMorphSmpOp(GenTree* tree, MorphAddrContext* mac, bool* optA
 
             if (!optValnumCSE_phase)
             {
+                if (tree->Match<GT_NOT>(&op2))
+                {
+
+                }
+
                 if (tree->OperIs(GT_MOD, GT_UMOD) && (op2->IsIntegralConst(1)))
                 {
                     // Transformation: a % 1 = 0
