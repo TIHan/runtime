@@ -1074,11 +1074,11 @@ public:
         return OperKind(gtOper);
     }
 
-    template <genTreeOps T>
+    template <genTreeOps... T>
     bool Match(GenTree** op1)
     {
-        static_assert(OperIsUnary(T) && "Not an unary operator!");
-        if (OperIs(T))
+        static_assert(AllOperIsUnary(T...) && "Not an unary operator!");
+        if (OperIs(T...))
         {
             *op1 = gtGetOp1();
             return true;
@@ -1089,8 +1089,8 @@ public:
     template <genTreeOps... T>
     bool Match(GenTree** op1, GenTree** op2)
     {
-        static_assert(OperIsBinary(T) && "Not a binary operator!");
-        if (OperIs(T))
+        static_assert(AllOperIsBinary(T...) && "Not a binary operator!");
+        if (OperIs(T...))
         {
             *op1 = gtGetOp1();
             *op2 = gtGetOp2();
@@ -1500,6 +1500,12 @@ public:
         return (OperKind(gtOper) & GTK_UNOP) != 0;
     }
 
+    template <typename... T>
+    static constexpr bool AllOperIsUnary(genTreeOps gtOper, T... rest)
+    {
+        return OperIsUnary(gtOper) && OperIsUnary(rest...);
+    }
+
     bool OperIsUnary() const
     {
         return OperIsUnary(gtOper);
@@ -1508,6 +1514,12 @@ public:
     static constexpr bool OperIsBinary(genTreeOps gtOper)
     {
         return (OperKind(gtOper) & GTK_BINOP) != 0;
+    }
+
+    template <typename... T>
+    static constexpr bool AllOperIsBinary(genTreeOps gtOper, T... rest)
+    {
+        return OperIsBinary(gtOper) && OperIsBinary(rest...);
     }
 
     bool OperIsBinary() const
