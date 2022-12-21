@@ -1114,8 +1114,8 @@ public:
     {
         if (OperIsBinary())
         {
-            *op1 = dynamic_cast<T1>(gtGetOp1());
-            *op2 = dynamic_cast<T2>(gtGetOp2());
+            *op1 = dynamic_cast<T1*>(gtGetOp1());
+            *op2 = dynamic_cast<T2*>(gtGetOp2());
             if ((*op1 != nullptr) && (*op2 != nullptr))
             {
                 return true;
@@ -1144,7 +1144,7 @@ public:
     {
         if (OperIsUnaryOrBinary())
         {
-            *op1 = dynamic_cast<T>(gtGetOp2());
+            *op1 = dynamic_cast<T*>(gtGetOp2());
             return (*op1 != nullptr);
         }
         return false;
@@ -1183,7 +1183,7 @@ public:
     {
         if (OperIsBinary())
         {
-            *op2 = dynamic_cast<T>(gtGetOp2());
+            *op2 = dynamic_cast<T*>(gtGetOp2());
             return (*op2 != nullptr);
         }
         return false;
