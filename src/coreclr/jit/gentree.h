@@ -1154,7 +1154,7 @@ public:
     bool MatchOp1(ssize_t cns)
     {
         static_assert(AllOperIsUnaryOrBinary(T...) && "Not an unary or binary operator!");
-        return gtGetOp1()->IsIntegralConst(cns);
+        return OperIs(T...) && gtGetOp1()->IsIntegralConst(cns);
     }
 
     bool MatchOp1(ssize_t cns)
@@ -1193,7 +1193,7 @@ public:
     bool MatchOp2(ssize_t cns)
     {
         static_assert(AllOperIsBinary(T...) && "Not a binary operator!");
-        return gtGetOp2()->IsIntegralConst(cns);
+        return OperIs(T...) && gtGetOp2()->IsIntegralConst(cns);
     }
 
     bool MatchOp2(ssize_t cns)
