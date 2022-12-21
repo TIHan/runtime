@@ -1086,6 +1086,16 @@ public:
         return false;
     }
 
+    bool Match(GenTree** op1)
+    {
+        if (OperIsUnary())
+        {
+            *op1 = gtGetOp1();
+            return true;
+        }
+        return false;
+    }
+
     template <genTreeOps... T>
     bool Match(GenTree** op1, GenTree** op2)
     {
@@ -1099,6 +1109,63 @@ public:
         return false;
     }
 
+    template <class T1 = GenTree, class T2 = GenTree>
+    bool Match(T1** op1, T2** op2)
+    {
+        if (OperIsBinary())
+        {
+            *op1 = dynamic_cast<T1>(gtGetOp1());
+            *op2 = dynamic_cast<T2>(gtGetOp2());
+            if ((*op1 != nullptr) && (*op2 != nullptr))
+            {
+                return true;
+            }
+            *op1 = nullptr;
+            *op2 = nullptr;
+            return false;
+        }
+        return false;
+    }
+
+    template <genTreeOps... T>
+    bool MatchOp1(GenTree** op1)
+    {
+        static_assert(AllOperIsUnaryOrBinary(T...) && "Not an unary or binary operator!");
+        if (OperIs(T...))
+        {
+            *op1 = gtGetOp1();
+            return true;
+        }
+        return false;
+    }
+
+    template <class T = GenTree>
+    bool MatchOp1(T** op1)
+    {
+        if (OperIsUnaryOrBinary())
+        {
+            *op1 = dynamic_cast<T>(gtGetOp2());
+            return (*op1 != nullptr);
+        }
+        return false;
+    }
+
+    template <genTreeOps... T>
+    bool MatchOp1(ssize_t cns)
+    {
+        static_assert(AllOperIsUnaryOrBinary(T...) && "Not an unary or binary operator!");
+        return gtGetOp1()->IsIntegralConst(cns);
+    }
+
+    bool MatchOp1(ssize_t cns)
+    {
+        if (OperIsUnaryOrBinary())
+        {
+            return gtGetOp1()->IsIntegralConst(cns);
+        }
+        return false;
+    }
+
     template <genTreeOps... T>
     bool MatchOp2(GenTree** op2)
     {
@@ -1107,6 +1174,33 @@ public:
         {
             *op2 = gtGetOp2();
             return true;
+        }
+        return false;
+    }
+
+    template <class T = GenTree>
+    bool MatchOp2(T** op2)
+    {
+        if (OperIsBinary())
+        {
+            *op2 = dynamic_cast<T>(gtGetOp2());
+            return (*op2 != nullptr);
+        }
+        return false;
+    }
+
+    template <genTreeOps... T>
+    bool MatchOp2(ssize_t cns)
+    {
+        static_assert(AllOperIsBinary(T...) && "Not a binary operator!");
+        return gtGetOp2()->IsIntegralConst(cns);
+    }
+
+    bool MatchOp2(ssize_t cns)
+    {
+        if (OperIsBinary())
+        {
+            return gtGetOp2()->IsIntegralConst(cns);
         }
         return false;
     }
@@ -1537,6 +1631,22 @@ public:
     bool OperIsBinary() const
     {
         return OperIsBinary(gtOper);
+    }
+
+    static constexpr bool OperIsUnaryOrBinary(genTreeOps gtOper)
+    {
+        return (OperKind(gtOper) & (GTK_UNOP | GTK_BINOP)) != 0;
+    }
+
+    template <typename... T>
+    static constexpr bool AllOperIsUnaryOrBinary(genTreeOps gtOper, T... rest)
+    {
+        return OperIsBinary(gtOper) && OperIsUnaryOrBinary(rest...);
+    }
+
+    bool OperIsUnaryOrBinary() const
+    {
+        return OperIsUnaryOrBinary(gtOper);
     }
 
     static bool OperIsSimple(genTreeOps gtOper)
