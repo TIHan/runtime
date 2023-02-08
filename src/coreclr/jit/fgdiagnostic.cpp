@@ -827,6 +827,7 @@ bool Compiler::fgDumpFlowGraph(Phases phase, PhasePosition pos)
         escapedString = fgProcessEscapes(info.compMethodName, s_EscapeMapping);
         fprintf(fgxFile, "\n    methodName=\"%s\"", escapedString);
         fprintf(fgxFile, "\n    ngenRegion=\"%s\"", regionString);
+        fprintf(fgxFile, "\n    phase=\"%s\"", PhaseNames[phase]);
 
         fprintf(fgxFile, "\n    bytesOfIL=\"%d\"", info.compILCodeSize);
         fprintf(fgxFile, "\n    localVarCount=\"%d\"", lvaCount);
@@ -1030,6 +1031,66 @@ bool Compiler::fgDumpFlowGraph(Phases phase, PhasePosition pos)
             fprintf(fgxFile, "\n            rootTreeOp=\"%s\"", rootTreeOpName);
             fprintf(fgxFile, "\n            endOffset=\"%d\"", block->bbCodeOffsEnd);
             fprintf(fgxFile, ">");
+
+            // Statements
+            fprintf(fgxFile, "\n            <statements>");
+
+            for (Statement* const stmt : block->Statements())
+            {
+                GenTree* rootNode = stmt->GetRootNode();
+                if (rootNode != nullptr)
+                {
+                    fprintf(fgxFile, "\n                <statement");
+                    fprintf(fgxFile, "\n                    rootNode=\"");
+
+                    auto dumpNode = [&](GenTree* node)
+                    {
+                        auto dumpNodeImpl = [&](GenTree* node, auto& dumpNode) -> void
+                        {
+                            fprintf(fgxFile, "%s", GenTree::OpName(node->OperGet()));
+
+                            int opCount = 0;
+                            for (auto childNode : node->Operands())
+                            {
+                                opCount++;
+                            }
+
+                            int  opIndex      = 0;
+                            bool initOperands = false;
+                            for (auto childNode : node->Operands())
+                            {
+                                if (!initOperands)
+                                {
+                                    initOperands = true;
+                                    fprintf(fgxFile, "(");
+                                }
+                                dumpNode(childNode, dumpNode);
+                                opIndex++;
+                                if (opIndex < opCount)
+                                {
+                                    fprintf(fgxFile, ", ");
+                                }
+                            }
+                            if (initOperands)
+                            {
+                                fprintf(fgxFile, ")");
+                            }
+                        };
+
+                        dumpNodeImpl(node, dumpNodeImpl);
+                    };
+
+                    dumpNode(rootNode);
+
+                    fprintf(fgxFile, "\"");
+
+
+                    fprintf(fgxFile, "\n                />");
+                }
+            }
+
+            fprintf(fgxFile, "\n            </statements>");
+
             fprintf(fgxFile, "\n        </block>");
         }
     }
