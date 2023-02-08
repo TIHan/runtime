@@ -4681,6 +4681,7 @@ public:
     void fgMergeBlockReturn(BasicBlock* block);
 
     bool fgMorphBlockStmt(BasicBlock* block, Statement* stmt DEBUGARG(const char* msg));
+    void fgMorphBlockStmtCoalesceWrites(BasicBlock* block, Statement* stmt);
 
     //------------------------------------------------------------------------------------------------------------
     // MorphMDArrayTempCache: a simple cache of compiler temporaries in the local variable table, used to minimize

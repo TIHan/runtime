@@ -13482,6 +13482,83 @@ bool Compiler::fgMorphBlockStmt(BasicBlock* block, Statement* stmt DEBUGARG(cons
     return removedStmt;
 }
 
+void Compiler::fgMorphBlockStmtCoalesceWrites(BasicBlock* block, Statement* stmt)
+{
+    if (opts.OptimizationDisabled())
+        return;
+
+    if (!fgGlobalMorph)
+        return;
+
+    GenTree* asg = stmt->GetRootNode();
+    if (!asg->OperIs(GT_ASG))
+        return;
+
+    Statement* nextStmt = stmt->GetNextStmt();
+    if (nextStmt == nullptr)
+        return;
+
+    GenTree* nextAsg = nextStmt->GetRootNode();
+    if (!nextAsg->OperIs(GT_ASG))
+        return;
+
+    GenTree* op1 = asg->gtGetOp1();
+    GenTree* op2 = asg->gtGetOp2();
+
+    GenTree* nextOp1 = nextAsg->gtGetOp1();
+    GenTree* nextOp2 = nextAsg->gtGetOp2();
+
+    if (!op1->OperIs(GT_LCL_VAR) || !op1->TypeIs(TYP_UBYTE))
+        return;
+
+    if (!nextOp1->OperIs(GT_LCL_VAR) || !nextOp1->TypeIs(TYP_UBYTE))
+        return;
+
+    if (!op2->OperIs(GT_CNS_INT) || !nextOp2->OperIs(GT_CNS_INT))
+        return;
+
+    GenTreeLclVarCommon* lclVar     = op1->AsLclVarCommon();
+    GenTreeLclVarCommon* nextLclVar = nextOp1->AsLclVarCommon();
+
+    if (lclVar->gtFlags != nextLclVar->gtFlags)
+        return;
+
+    LclVarDsc* varDsc     = lvaGetDesc(lclVar);
+    LclVarDsc* nextVarDsc = lvaGetDesc(nextLclVar);
+
+    if (!varDsc->lvIsStructField || !nextVarDsc->lvIsStructField)
+        return;
+
+    if (varDsc->lvParentLcl != nextVarDsc->lvParentLcl)
+        return;
+
+    if ((varDsc->lvFldOffset + 1) != nextVarDsc->lvFldOffset)
+        return;
+
+    if ((varDsc->lvType != TYP_UBYTE) || (nextVarDsc->lvType != TYP_UBYTE))
+        return;
+
+    INT64 cnsValue     = (byte)op2->AsIntConCommon()->IntegralValue();
+    INT64 nextCnsValue = (byte)nextOp2->AsIntConCommon()->IntegralValue();
+
+    unsigned int newLclNum = lvaGrabTemp(true DEBUGARG("coalesced"));
+    LclVarDsc*   newVarDsc = lvaGetDesc(newLclNum);
+
+    *newVarDsc = *varDsc;
+    newVarDsc->lvType = TYP_USHORT;
+
+    asg->ChangeType(TYP_USHORT);
+    lclVar->ChangeType(TYP_USHORT);
+    lclVar->SetLclNum(newLclNum);
+    op2->AsIntConCommon()->SetIntegralValue(cnsValue | (nextCnsValue << 8));
+
+    DEBUG_DESTROY_NODE(nextOp2);
+    DEBUG_DESTROY_NODE(nextOp1);
+    DEBUG_DESTROY_NODE(nextAsg);
+
+    nextStmt->SetRootNode(gtNewNothingNode());
+}
+
 /*****************************************************************************
  *
  *  Morph the statements of the given block.
@@ -13518,6 +13595,8 @@ void Compiler::fgMorphStmts(BasicBlock* block)
 #endif
 
         /* Morph this statement tree */
+
+        fgMorphBlockStmtCoalesceWrites(block, stmt);
 
         GenTree* morphedTree = fgMorphTree(oldTree);
 
