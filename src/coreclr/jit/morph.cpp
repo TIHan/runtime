@@ -10972,6 +10972,20 @@ GenTree* Compiler::fgOptimizeCommutativeArithmetic(GenTreeOp* tree)
         }
     }
 
+    if (!optValnumCSE_phase)
+    {
+        GenTree* optimizedTree = nullptr;
+        if (tree->OperIs(GT_AND))
+        {
+            optimizedTree = fgOptimizeBitwiseAnd(tree);
+        }
+
+        if (optimizedTree != nullptr)
+        {
+            return optimizedTree;
+        }
+    }
+
     if (varTypeIsIntegralOrI(tree))
     {
         genTreeOps oldTreeOper   = tree->OperGet();
@@ -10998,10 +11012,6 @@ GenTree* Compiler::fgOptimizeCommutativeArithmetic(GenTreeOp* tree)
         else if (tree->OperIs(GT_MUL))
         {
             optimizedTree = fgOptimizeMultiply(tree);
-        }
-        else if (tree->OperIs(GT_AND))
-        {
-            optimizedTree = fgOptimizeBitwiseAnd(tree);
         }
         else if (tree->OperIs(GT_XOR))
         {

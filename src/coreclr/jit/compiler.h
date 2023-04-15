@@ -5973,7 +5973,7 @@ private:
     GenTree* fgMorphMultiOp(GenTreeMultiOp* multiOp);
     GenTree* fgMorphConst(GenTree* tree);
 
-    GenTree* fgMorphCommutative(GenTreeOp* tree);
+    GenTreeOp* fgMorphCommutative(GenTreeOp* tree);
     GenTree* fgMorphCastedBitwiseOp(GenTreeOp* tree);
 
     GenTree* fgMorphReduceAddOps(GenTree* tree);
