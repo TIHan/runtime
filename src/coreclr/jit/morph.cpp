@@ -10937,6 +10937,15 @@ GenTree* Compiler::fgOptimizeCommutativeArithmetic(GenTreeOp* tree)
     assert(tree->OperIs(GT_ADD, GT_MUL, GT_OR, GT_XOR, GT_AND));
     assert(!tree->gtOverflowEx());
 
+    if (!optValnumCSE_phase && tree->OperIs(GT_AND))
+    {
+        GenTree* optimizedTree = fgOptimizeBitwiseAnd(tree->AsOp());
+        if (optimizedTree != nullptr)
+        {
+            return optimizedTree;
+        }
+    }
+
     // Commute constants to the right.
     if (tree->gtGetOp1()->OperIsConst() && !tree->gtGetOp1()->TypeIs(TYP_REF))
     {
@@ -11315,6 +11324,39 @@ GenTree* Compiler::fgOptimizeBitwiseAnd(GenTreeOp* andOp)
         DEBUG_DESTROY_NODE(andOp);
 
         return op1;
+    }
+
+    if (op1->OperIs(GT_LCL_VAR) && op2->OperIs(GT_LCL_VAR) &&
+        (op1->AsLclVarCommon()->GetLclNum() == op2->AsLclVarCommon()->GetLclNum()))
+    {
+        DEBUG_DESTROY_NODE(op1);
+        DEBUG_DESTROY_NODE(andOp);
+
+        return op2;
+    }
+
+    if (op1->OperIs(GT_CAST) && op2->OperIs(GT_CAST))
+    {
+        GenTreeCast* castOp1 = op1->AsCast();
+        GenTreeCast* castOp2 = op2->AsCast();
+
+        if (castOp1->gtOverflow() || castOp2->gtOverflow())
+            return nullptr;
+
+        if (castOp1->CastOp()->OperIs(GT_LCL_VAR) && castOp2->CastOp()->OperIs(GT_LCL_VAR))
+        {
+            GenTreeLclVarCommon* lclVar1 = castOp1->CastOp()->AsLclVarCommon();
+            GenTreeLclVarCommon* lclVar2 = castOp2->CastOp()->AsLclVarCommon();
+
+            if ((lclVar1->GetLclNum() == lclVar2->GetLclNum()) && (castOp1->CastToType() == castOp2->CastToType()))
+            {
+                DEBUG_DESTROY_NODE(lclVar1);
+                DEBUG_DESTROY_NODE(op1);
+                DEBUG_DESTROY_NODE(andOp);
+
+                return op2;
+            }
+        }
     }
 
     return nullptr;
