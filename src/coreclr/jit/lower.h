@@ -308,6 +308,7 @@ private:
     void LowerStoreIndir(GenTreeStoreInd* node);
     GenTree* LowerAdd(GenTreeOp* node);
     GenTree* LowerMul(GenTreeOp* mul);
+    bool TryLowerAnd(GenTreeOp* node, GenTree** nextNode);
     bool TryLowerAndNegativeOne(GenTreeOp* node, GenTree** nextNode);
     GenTree* LowerBinaryArithmetic(GenTreeOp* binOp);
     bool LowerUnsignedDivOrMod(GenTreeOp* divMod);

@@ -440,7 +440,7 @@ GenTree* Lowering::LowerNode(GenTree* node)
             if (comp->opts.OptimizationEnabled() && node->OperIs(GT_AND))
             {
                 GenTree* nextNode = nullptr;
-                if (TryLowerAndNegativeOne(node->AsOp(), &nextNode))
+                if (TryLowerAnd(node->AsOp(), &nextNode))
                 {
                     return nextNode;
                 }
@@ -8254,6 +8254,62 @@ void Lowering::TryRetypingFloatingPointStoreToIntegerStore(GenTree* store)
             store->ChangeType(type);
         }
     }
+}
+
+//----------------------------------------------------------------------------------------------
+// Lowering::TryLowerAnd:
+//    If safe, lowers a tree AND.
+//
+// Arguments:
+//    node - GT_AND node of integral type
+//    nextNode - out parameter that represents the 'gtNext' of the given node if the transformation was successful
+//
+// Return Value:
+//    Returns the true if the transformation was successful; false if it was not.
+bool Lowering::TryLowerAnd(GenTreeOp* node, GenTree** nextNode)
+{
+    assert(node->OperIs(GT_AND));
+    assert(nextNode != nullptr);
+
+    if (TryLowerAndNegativeOne(node->AsOp(), nextNode))
+    {
+        return true;
+    }
+
+    if (node->gtSetFlags())
+        return false;
+
+    if (node->isContained())
+        return false;
+
+    GenTree* op1 = node->gtGetOp1();
+    GenTree* op2 = node->gtGetOp2();
+
+    if (!node->TypeIs(op1->TypeGet()))
+        return false;
+
+    if (op1->OperIs(GT_LCL_VAR) && op2->OperIs(GT_LCL_VAR) &&
+        (op1->AsLclVarCommon()->GetLclNum() == op2->AsLclVarCommon()->GetLclNum()))
+    {
+        LIR::Use use;
+        if (BlockRange().TryGetUse(node, &use))
+        {
+            use.ReplaceWith(op1);
+        }
+        else
+        {
+            op1->SetUnusedValue();
+        }
+
+        *nextNode = node->gtNext;
+
+        BlockRange().Remove(op2);
+        BlockRange().Remove(node);
+
+        return true;
+    }
+
+    return false;
 }
 
 //----------------------------------------------------------------------------------------------
