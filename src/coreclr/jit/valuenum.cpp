@@ -10247,6 +10247,7 @@ void Compiler::fgValueNumberSsaVarDef(GenTreeLclVarCommon* lcl)
         if (genTypeSize(varDsc) != genTypeSize(lcl))
         {
             assert((varDsc->TypeGet() == TYP_LONG) && lcl->TypeIs(TYP_INT));
+
             lcl->gtVNPair = vnStore->VNPairForCast(wholeLclVarVNP, lcl->TypeGet(), varDsc->TypeGet());
         }
         else
@@ -10258,7 +10259,14 @@ void Compiler::fgValueNumberSsaVarDef(GenTreeLclVarCommon* lcl)
     }
     else
     {
-        lcl->gtVNPair = wholeLclVarVNP;
+        if (varDsc->lvNormalizeOnLoad())
+        {
+            lcl->gtVNPair = vnStore->VNPairForExpr(compCurBB, varDsc->TypeGet());
+        }
+        else
+        {
+            lcl->gtVNPair = wholeLclVarVNP;
+        }
     }
 }
 
@@ -11539,7 +11547,35 @@ void Compiler::fgValueNumberCastTree(GenTree* tree)
 
     assert(genActualType(castToType) == genActualType(tree->TypeGet())); // Ensure that the resultType is correct
 
-    tree->gtVNPair = vnStore->VNPairForCast(srcVNPair, castToType, castFromType, srcIsUnsigned, hasOverflowCheck);
+    if (tree->gtGetOp1()->OperIs(GT_LCL_VAR))
+    {
+        GenTreeLclVar* lcl = tree->gtGetOp1()->AsLclVar();
+
+        if (lcl->HasSsaName())
+        {
+            LclVarDsc* varDsc = lvaGetDesc(lcl);
+
+            if (varDsc->lvNormalizeOnLoad() && (castToType == varDsc->TypeGet()))
+            {
+                ValueNumPair wholeLclVarVNP = varDsc->GetPerSsaData(lcl->GetSsaNum())->m_vnPair;
+                tree->gtVNPair              = wholeLclVarVNP;
+            }
+            else
+            {
+                tree->gtVNPair =
+                    vnStore->VNPairForCast(srcVNPair, castToType, castFromType, srcIsUnsigned, hasOverflowCheck);
+            }
+        }
+        else
+        {
+            tree->gtVNPair =
+                vnStore->VNPairForCast(srcVNPair, castToType, castFromType, srcIsUnsigned, hasOverflowCheck);
+        }
+    }
+    else
+    {
+        tree->gtVNPair = vnStore->VNPairForCast(srcVNPair, castToType, castFromType, srcIsUnsigned, hasOverflowCheck);
+    }
 }
 
 // Compute the ValueNumber for a cast operation
