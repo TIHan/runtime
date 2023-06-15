@@ -391,12 +391,22 @@ int __cdecl main(int argc, char* argv[])
         MetricsSummary baseMetrics;
         bool isMinOpts;
         jittedCount++;
+        //for (int i = 0; i < 10000; i++)
+        //{
+        //    res = jit->CompileMethod(mc, reader->GetMethodContextIndex(), collectThroughput, &baseMetrics, &isMinOpts);
+        //}
+        printf("Press Any Key to Begin Jitting\n");
+        getchar();
         st3.Start();
+      //  for (int i = 0; i < 10000; i++)
+      //  {
         res = jit->CompileMethod(mc, reader->GetMethodContextIndex(), collectThroughput, &baseMetrics, &isMinOpts);
+      //  }
         st3.Stop();
-        LogDebug("Method %d compiled%s in %fms, result %d",
-            reader->GetMethodContextIndex(), (o.nameOfJit2 == nullptr) ? "" : " by JIT1", st3.GetMilliseconds(), res);
-
+        double time = st3.GetMilliseconds();
+        LogVerbose("Method %d compiled%s 10000 times. Average compilation %fms, result %d",
+            reader->GetMethodContextIndex(), (o.nameOfJit2 == nullptr) ? "" : " by JIT1", time, res);
+        exit(0);
         MetricsSummary& totalBaseMetricsOpts = isMinOpts ? totalBaseMetrics.MinOpts : totalBaseMetrics.FullOpts;
         MetricsSummary& totalDiffMetricsOpts = isMinOpts ? totalDiffMetrics.MinOpts : totalDiffMetrics.FullOpts;
 
