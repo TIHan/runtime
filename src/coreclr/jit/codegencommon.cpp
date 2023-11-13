@@ -2097,6 +2097,49 @@ void CodeGen::genEmitUnwindDebugGCandEH()
     getDisAssembler().disAsmCode((BYTE*)*codePtr, finalHotCodeSize, (BYTE*)coldCodePtr, finalColdCodeSize);
 #endif // LATE_DISASM
 
+    if (compiler->opts.disAsm && codeSize > 0)
+    {
+        unsigned finalHotCodeSize;
+        unsigned finalColdCodeSize;
+        if (compiler->fgFirstColdBlock != nullptr)
+        {
+            // We did some hot/cold splitting. The hot section is always padded out to the
+            // size we thought it would be, but the cold section is not.
+            assert(codeSize <= compiler->info.compTotalHotCodeSize + compiler->info.compTotalColdCodeSize);
+            assert(compiler->info.compTotalHotCodeSize > 0);
+            assert(compiler->info.compTotalColdCodeSize > 0);
+            finalHotCodeSize  = compiler->info.compTotalHotCodeSize;
+            finalColdCodeSize = codeSize - finalHotCodeSize;
+        }
+        else
+        {
+            // No hot/cold splitting
+            assert(codeSize <= compiler->info.compTotalHotCodeSize);
+            assert(compiler->info.compTotalHotCodeSize > 0);
+            assert(compiler->info.compTotalColdCodeSize == 0);
+            finalHotCodeSize  = codeSize;
+            finalColdCodeSize = 0;
+        }
+        //FILE*   codf;
+        //errno_t ec = fopen_s(&codf, "C:\\work\\rawbytes.txt", "at"); // NOTE: file append mode
+        //if (ec != 0)
+        //{
+        //    fwrite(codePtr, 1, codeSize, codf);
+        //}
+
+        FILE* dmpf = jitstdout();
+        fprintf(dmpf, "Generated hex-code for %s:\n", compiler->info.compFullName);
+        fprintf(dmpf, "\n");
+
+        auto addr = (BYTE*)*codePtr + compiler->GetEmitter()->writeableOffset;
+       // hexDump(dmpf, "Code", (BYTE*)*codePtr + compiler->GetEmitter()->writeableOffset, codeSize);
+        for (unsigned int i = 0; i < codeSize; i++)
+        {
+            fprintf(dmpf, "%02X", *addr++);
+        }
+          //  fprintf(dmpf, "    Code  at %p [%04X bytes]\n", dspPtr(*codePtr), codeSize);
+    }
+
     /* Report any exception handlers to the VM */
 
     genReportEH();
