@@ -12,6 +12,7 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 #include "jitpch.h"
 #include "jitstd/algorithm.h"
+#include "tensorflow\c\c_api.h"
 #ifdef _MSC_VER
 #pragma hdrstop
 #endif
@@ -5418,6 +5419,8 @@ bool Compiler::optConfigDisableCSE2()
 
 void Compiler::optOptimizeCSEs()
 {
+    printf("CSE is looking at TensorFlow C library version %s\n", TF_Version());
+
     if (optCSEstart != BAD_VAR_NUM)
     {
         // CSE being run multiple times so we may need to clean up old

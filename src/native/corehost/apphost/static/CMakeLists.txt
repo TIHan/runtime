@@ -20,6 +20,7 @@ include_directories(..)
 include_directories(../../json)
 include_directories(${CLR_SRC_NATIVE_DIR}/libs/System.IO.Compression.Native)
 include_directories(${CLR_SRC_NATIVE_DIR}/libs/Common)
+link_directories("../../../external/tensorflow/lib")
 
 set(SOURCES
     ../bundle_marker.cpp
@@ -130,6 +131,7 @@ if(CLR_CMAKE_TARGET_WIN32)
         bcrypt.lib
         RuntimeObject.lib
         delayimp.lib
+        tensorflow.lib
     )
 
     set(RUNTIMEINFO_LIB runtimeinfo)

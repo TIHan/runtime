@@ -2,6 +2,8 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 include_directories("./jitstd")
 include_directories("../inc")
+include_directories("../../native/external/tensorflow/include")
+link_directories("../../native/external/tensorflow/lib")
 
 # gcc 10 and lower versions are too sensitive to bit fields width and warn from core compiler.
 # Since there is no better / specific suppression available for these core warnings, we disable
@@ -285,6 +287,7 @@ set( JIT_HEADERS
   ../inc/corjit.h
   ../inc/corjitflags.h
   ../inc/corjithost.h
+  ../../native/external/tensorflow/include/tensorflow/c/c_api.h
   _typeinfo.h
   alloc.h
   arraystack.h
@@ -560,6 +563,7 @@ else()
        crypt32.lib
        RuntimeObject.lib
        coreclrminipal
+       tensorflow.lib
     )
 endif(CLR_CMAKE_HOST_UNIX)
 
@@ -684,3 +688,5 @@ if (CLR_CMAKE_TARGET_WIN32 AND CLR_CMAKE_PGO_INSTRUMENT)
   install(FILES "${PGORT_DIR}/${PGORT_DLL}" DESTINATION ${CMAKE_INSTALL_PREFIX})
   install(FILES "${PGORT_DIR}/${PGORT_DLL}" DESTINATION ${CMAKE_INSTALL_PREFIX}/sharedFramework)
 endif ()
+
+install(FILES "../../native/external/tensorflow/lib/tensorflow.dll" DESTINATION ${CMAKE_INSTALL_PREFIX})
