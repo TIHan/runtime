@@ -5590,6 +5590,23 @@ BOOL HandleHardwareException(PAL_SEHException* ex)
 
 #endif // TARGET_UNIX
 
+void FirstChanceExceptionNotification()
+{
+#ifndef TARGET_UNIX
+    if (IsDebuggerPresent())
+    {
+        PAL_TRY(VOID *, unused, NULL)
+        {
+            RaiseException(EXCEPTION_COMPLUS, 0, 0, NULL);
+        }
+        PAL_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
+        {
+        }
+        PAL_ENDTRY;
+    }
+#endif // TARGET_UNIX
+}
+
 VOID DECLSPEC_NORETURN DispatchManagedException(OBJECTREF throwable, CONTEXT* pExceptionContext, bool preserveStackTrace)
 {
     STATIC_CONTRACT_THROWS;
@@ -5637,6 +5654,8 @@ VOID DECLSPEC_NORETURN DispatchManagedException(OBJECTREF throwable, CONTEXT* pE
     DECLARE_ARGHOLDER_ARRAY(args, 2);
     args[ARGNUM_0] = OBJECTREF_TO_ARGHOLDER(throwable);
     args[ARGNUM_1] = PTR_TO_ARGHOLDER(&exInfo);
+
+    FirstChanceExceptionNotification();
 
     pThread->IncPreventAbort();
 
@@ -8090,7 +8109,7 @@ static BOOL CheckExceptionInterception(StackFrameIterator* pStackFrameIterator, 
             reinterpret_cast<PBYTE *>(&(sfInterceptStackFrame.SP)),
             NULL, NULL);
 
-        TADDR spForDebugger = GetSpForDiagnosticReporting(pStackFrameIterator->m_crawl.GetRegisterSet());
+        TADDR spForDebugger = GetRegdisplaySP(pStackFrameIterator->m_crawl.GetRegisterSet());
 
         if ((pExInfo->m_passNumber == 1) ||
             ((pInterceptMD == pMD) && (sfInterceptStackFrame == spForDebugger)))
@@ -8251,6 +8270,22 @@ extern "C" bool QCALLTYPE SfiInit(StackFrameIterator* pThis, CONTEXT* pStackwalk
                         }
                     }
 #endif // DEBUGGING_SUPPORTED
+                }
+            }
+        }
+        else // pass number 2
+        {
+            if (pThis->GetFrameState() == StackFrameIterator::SFITER_SKIPPED_FRAME_FUNCTION)
+            {
+                // Update context pointers using the skipped frame. This is needed when exception handling continues
+                // from ProcessCLRExceptionNew, since the RtlUnwind doesn't maintain context pointers.
+                // We explicitly don't do that for inlined frames as it would modify the PC/SP to point to
+                // a slightly different location in the managed code calling the pinvoke and the inlined
+                // call frame doesn't update the context pointers anyways.
+                Frame *pSkippedFrame = pThis->m_crawl.GetFrame();
+                if (pSkippedFrame->NeedsUpdateRegDisplay() && (pSkippedFrame->GetVTablePtr() != InlinedCallFrame::GetMethodFrameVPtr()))
+                {
+                    pSkippedFrame->UpdateRegDisplay(pThis->m_crawl.GetRegisterSet());
                 }
             }
         }
@@ -8475,14 +8510,9 @@ extern "C" bool QCALLTYPE SfiNext(StackFrameIterator* pThis, uint* uExCollideCla
                             isCollided = true;
                             pExInfo->m_kind = (ExKind)((uint8_t)pExInfo->m_kind | (uint8_t)ExKind::SupersededFlag);
 
-                            // Unwind until we hit the frame of the prevExInfo
+                            // Unwind to the frame of the prevExInfo
                             ExInfo* pPrevExInfo = pThis->GetNextExInfo();
-                            do
-                            {
-                                retVal = MoveToNextNonSkippedFrame(pThis);
-                            }
-                            while ((retVal == SWA_CONTINUE) && !(pThis->GetFrameState() == StackFrameIterator::SFITER_FRAMELESS_METHOD && pThis->m_crawl.GetRegisterSet()->SP == pPrevExInfo->m_regDisplay.SP));
-                            _ASSERTE(retVal != SWA_FAILED);
+                            pThis->SkipTo(&pPrevExInfo->m_frameIter);
 
                             pThis->ResetNextExInfoForSP(pThis->m_crawl.GetRegisterSet()->SP);
                         }

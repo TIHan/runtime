@@ -1210,6 +1210,26 @@ ves_icall_System_Runtime_CompilerServices_RuntimeHelpers_PrepareMethod (MonoMeth
 	// FIXME: Implement
 }
 
+void
+ves_icall_System_Runtime_CompilerServices_RuntimeHelpers_InternalBox (MonoQCallTypeHandle type_handle, char* data, MonoObjectHandleOnStack obj, MonoError *error)
+{
+	MonoType *type = type_handle.type;
+	MonoClass *klass = mono_class_from_mono_type_internal (type);
+
+	g_assert (m_class_is_valuetype (klass));
+
+	mono_class_init_checked (klass, error);
+	goto_if_nok (error, error_ret);
+
+	MonoObject* raw_obj = mono_value_box_checked (klass, data, error);
+	goto_if_nok (error, error_ret);
+
+	HANDLE_ON_STACK_SET(obj, raw_obj);
+	return;
+error_ret:
+	HANDLE_ON_STACK_SET (obj, NULL);
+}
+
 MonoObjectHandle
 ves_icall_System_Object_MemberwiseClone (MonoObjectHandle this_obj, MonoError *error)
 {
@@ -4564,6 +4584,7 @@ ves_icall_System_Reflection_RuntimeAssembly_GetInfo (MonoQCallAssemblyHandle ass
 		else
 			absolute = g_build_filename (assembly->basedir, filename, (const char*)NULL);
 
+		g_assert (absolute);
 		mono_icall_make_platform_path (absolute);
 
 		const gchar *prepend = mono_icall_get_file_path_prefix (absolute);

@@ -309,7 +309,11 @@ protected:
     bool      m_modifiedFlow;
 
 protected:
-    Instrumentor(Compiler* comp) : m_comp(comp), m_schemaCount(0), m_instrCount(0), m_modifiedFlow(false)
+    Instrumentor(Compiler* comp)
+        : m_comp(comp)
+        , m_schemaCount(0)
+        , m_instrCount(0)
+        , m_modifiedFlow(false)
     {
     }
 
@@ -360,7 +364,8 @@ public:
 class NonInstrumentor : public Instrumentor
 {
 public:
-    NonInstrumentor(Compiler* comp) : Instrumentor(comp)
+    NonInstrumentor(Compiler* comp)
+        : Instrumentor(comp)
     {
     }
 };
@@ -376,7 +381,9 @@ private:
     BasicBlock* m_entryBlock;
 
 public:
-    BlockCountInstrumentor(Compiler* comp) : Instrumentor(comp), m_entryBlock(nullptr)
+    BlockCountInstrumentor(Compiler* comp)
+        : Instrumentor(comp)
+        , m_entryBlock(nullptr)
     {
     }
     bool ShouldProcess(BasicBlock* block) override
@@ -508,10 +515,9 @@ void BlockCountInstrumentor::RelocateProbes()
         if (criticalPreds.Height() > 0)
         {
             BasicBlock* const intermediary = m_comp->fgNewBBbefore(BBJ_ALWAYS, block, /* extendRegion */ true);
-            intermediary->SetFlags(BBF_IMPORTED | BBF_MARKED | BBF_NONE_QUIRK);
+            intermediary->SetFlags(BBF_IMPORTED | BBF_MARKED);
             intermediary->inheritWeight(block);
             FlowEdge* const newEdge = m_comp->fgAddRefPred(block, intermediary);
-            newEdge->setLikelihood(1.0);
             intermediary->SetTargetEdge(newEdge);
             SetModifiedFlow();
 
@@ -567,8 +573,8 @@ void BlockCountInstrumentor::BuildSchemaElements(BasicBlock* block, Schema& sche
     schemaElem.InstrumentationKind = m_comp->opts.compCollect64BitCounts
                                          ? ICorJitInfo::PgoInstrumentationKind::BasicBlockLongCount
                                          : ICorJitInfo::PgoInstrumentationKind::BasicBlockIntCount;
-    schemaElem.ILOffset = offset;
-    schemaElem.Offset   = 0;
+    schemaElem.ILOffset            = offset;
+    schemaElem.Offset              = 0;
 
     schema.push_back(schemaElem);
 
@@ -842,9 +848,9 @@ public:
         Duplicate
     };
 
-    virtual void Badcode()                     = 0;
-    virtual void VisitBlock(BasicBlock* block) = 0;
-    virtual void VisitTreeEdge(BasicBlock* source, BasicBlock* target) = 0;
+    virtual void Badcode()                                                               = 0;
+    virtual void VisitBlock(BasicBlock* block)                                           = 0;
+    virtual void VisitTreeEdge(BasicBlock* source, BasicBlock* target)                   = 0;
     virtual void VisitNonTreeEdge(BasicBlock* source, BasicBlock* target, EdgeKind kind) = 0;
 };
 
@@ -1240,7 +1246,9 @@ static int32_t EfficientEdgeCountBlockToKey(BasicBlock* block)
 // Based on "Optimally Profiling and Tracing Programs,"
 // Ball and Larus PLDI '92.
 //
-class EfficientEdgeCountInstrumentor : public Instrumentor, public SpanningTreeVisitor
+class EfficientEdgeCountInstrumentor
+    : public Instrumentor
+    , public SpanningTreeVisitor
 {
 private:
     // A particular edge probe. These are linked
@@ -1680,10 +1688,9 @@ void EfficientEdgeCountInstrumentor::RelocateProbes()
         if (criticalPreds.Height() > 0)
         {
             BasicBlock* intermediary = m_comp->fgNewBBbefore(BBJ_ALWAYS, block, /* extendRegion */ true);
-            intermediary->SetFlags(BBF_IMPORTED | BBF_NONE_QUIRK);
+            intermediary->SetFlags(BBF_IMPORTED);
             intermediary->inheritWeight(block);
             FlowEdge* const newEdge = m_comp->fgAddRefPred(block, intermediary);
-            newEdge->setLikelihood(1.0);
             intermediary->SetTargetEdge(newEdge);
             NewRelocatedProbe(intermediary, probe->source, probe->target, &leader);
             SetModifiedFlow();
@@ -1755,8 +1762,8 @@ void EfficientEdgeCountInstrumentor::BuildSchemaElements(BasicBlock* block, Sche
         schemaElem.InstrumentationKind = m_comp->opts.compCollect64BitCounts
                                              ? ICorJitInfo::PgoInstrumentationKind::EdgeLongCount
                                              : ICorJitInfo::PgoInstrumentationKind::EdgeIntCount;
-        schemaElem.ILOffset = sourceKey;
-        schemaElem.Offset   = 0;
+        schemaElem.ILOffset            = sourceKey;
+        schemaElem.Offset              = 0;
 
         schema.push_back(schemaElem);
 
@@ -1905,7 +1912,9 @@ public:
     Compiler* m_compiler;
 
     HandleHistogramProbeVisitor(Compiler* compiler, TFunctor& functor)
-        : GenTreeVisitor<HandleHistogramProbeVisitor>(compiler), m_functor(functor), m_compiler(compiler)
+        : GenTreeVisitor<HandleHistogramProbeVisitor>(compiler)
+        , m_functor(functor)
+        , m_compiler(compiler)
     {
     }
     Compiler::fgWalkResult PreOrderVisit(GenTree** use, GenTree* user)
@@ -1937,7 +1946,9 @@ public:
     Compiler* m_compiler;
 
     ValueHistogramProbeVisitor(Compiler* compiler, TFunctor& functor)
-        : GenTreeVisitor<ValueHistogramProbeVisitor>(compiler), m_functor(functor), m_compiler(compiler)
+        : GenTreeVisitor<ValueHistogramProbeVisitor>(compiler)
+        , m_functor(functor)
+        , m_compiler(compiler)
     {
     }
 
@@ -1967,7 +1978,8 @@ private:
 
 public:
     BuildHandleHistogramProbeSchemaGen(Schema& schema, unsigned& schemaCount)
-        : m_schema(schema), m_schemaCount(schemaCount)
+        : m_schema(schema)
+        , m_schemaCount(schemaCount)
     {
     }
 
@@ -2005,8 +2017,8 @@ public:
         schemaElem.InstrumentationKind = compiler->opts.compCollect64BitCounts
                                              ? ICorJitInfo::PgoInstrumentationKind::HandleHistogramLongCount
                                              : ICorJitInfo::PgoInstrumentationKind::HandleHistogramIntCount;
-        schemaElem.ILOffset = (int32_t)call->gtHandleHistogramProfileCandidateInfo->ilOffset;
-        schemaElem.Offset   = 0;
+        schemaElem.ILOffset            = (int32_t)call->gtHandleHistogramProfileCandidateInfo->ilOffset;
+        schemaElem.Offset              = 0;
 
         m_schema.push_back(schemaElem);
 
@@ -2015,7 +2027,7 @@ public:
         // Re-using ILOffset and Other fields from schema item for TypeHandleHistogramCount
         schemaElem.InstrumentationKind = isTypeHistogram ? ICorJitInfo::PgoInstrumentationKind::HandleHistogramTypes
                                                          : ICorJitInfo::PgoInstrumentationKind::HandleHistogramMethods;
-        schemaElem.Count = ICorJitInfo::HandleHistogram32::SIZE;
+        schemaElem.Count               = ICorJitInfo::HandleHistogram32::SIZE;
         m_schema.push_back(schemaElem);
 
         m_schemaCount++;
@@ -2029,7 +2041,8 @@ class BuildValueHistogramProbeSchemaGen
 
 public:
     BuildValueHistogramProbeSchemaGen(Schema& schema, unsigned& schemaCount)
-        : m_schema(schema), m_schemaCount(schemaCount)
+        : m_schema(schema)
+        , m_schemaCount(schemaCount)
     {
     }
 
@@ -2038,8 +2051,8 @@ public:
         ICorJitInfo::PgoInstrumentationSchema schemaElem = {};
         schemaElem.Count                                 = 1;
         schemaElem.InstrumentationKind                   = compiler->opts.compCollect64BitCounts
-                                             ? ICorJitInfo::PgoInstrumentationKind::ValueHistogramLongCount
-                                             : ICorJitInfo::PgoInstrumentationKind::ValueHistogramIntCount;
+                                                               ? ICorJitInfo::PgoInstrumentationKind::ValueHistogramLongCount
+                                                               : ICorJitInfo::PgoInstrumentationKind::ValueHistogramIntCount;
         schemaElem.ILOffset = (int32_t)call->AsCall()->gtHandleHistogramProfileCandidateInfo->ilOffset;
         m_schema.push_back(schemaElem);
         m_schemaCount++;
@@ -2334,7 +2347,8 @@ public:
 class HandleHistogramProbeInstrumentor : public Instrumentor
 {
 public:
-    HandleHistogramProbeInstrumentor(Compiler* comp) : Instrumentor(comp)
+    HandleHistogramProbeInstrumentor(Compiler* comp)
+        : Instrumentor(comp)
     {
     }
     bool ShouldProcess(BasicBlock* block) override
@@ -2352,7 +2366,8 @@ public:
 class ValueInstrumentor : public Instrumentor
 {
 public:
-    ValueInstrumentor(Compiler* comp) : Instrumentor(comp)
+    ValueInstrumentor(Compiler* comp)
+        : Instrumentor(comp)
     {
     }
     bool ShouldProcess(BasicBlock* block) override
@@ -2729,7 +2744,7 @@ PhaseStatus Compiler::fgInstrumentMethod()
     //
     uint8_t* profileMemory;
     HRESULT  res = info.compCompHnd->allocPgoInstrumentationBySchema(info.compMethodHnd, schema.data(),
-                                                                    (UINT32)schema.size(), &profileMemory);
+                                                                     (UINT32)schema.size(), &profileMemory);
 
     // Deal with allocation failures.
     //
@@ -2951,8 +2966,8 @@ PhaseStatus Compiler::fgIncorporateProfileData()
         //
         if (fgPgoHaveWeights && !dataIsGood)
         {
-            JITDUMP("\nIncorporated count data had inconsistencies; blending profile...\n");
-            ProfileSynthesis::Run(this, ProfileSynthesisOption::BlendLikelihoods);
+            JITDUMP("\nIncorporated count data had inconsistencies; repairing profile...\n");
+            ProfileSynthesis::Run(this, ProfileSynthesisOption::RepairLikelihoods);
         }
     }
 
@@ -3104,7 +3119,7 @@ private:
     // Map correlating block keys to blocks.
     //
     typedef JitHashTable<int32_t, JitSmallPrimitiveKeyFuncs<int32_t>, BasicBlock*> KeyToBlockMap;
-    KeyToBlockMap m_keyToBlockMap;
+    KeyToBlockMap                                                                  m_keyToBlockMap;
 
     // Key for finding an edge based on schema info.
     //
@@ -3113,7 +3128,9 @@ private:
         int32_t const m_sourceKey;
         int32_t const m_targetKey;
 
-        EdgeKey(int32_t sourceKey, int32_t targetKey) : m_sourceKey(sourceKey), m_targetKey(targetKey)
+        EdgeKey(int32_t sourceKey, int32_t targetKey)
+            : m_sourceKey(sourceKey)
+            , m_targetKey(targetKey)
         {
         }
 
@@ -3161,7 +3178,7 @@ private:
     // Map for correlating EdgeIntCount schema entries with edges
     //
     typedef JitHashTable<EdgeKey, EdgeKey, Edge*> EdgeKeyToEdgeMap;
-    EdgeKeyToEdgeMap m_edgeKeyToEdgeMap;
+    EdgeKeyToEdgeMap                              m_edgeKeyToEdgeMap;
 
     // Per block data
     //
@@ -3268,15 +3285,9 @@ public:
 
     // Are there are reparable issues with the reconstruction?
     //
-    // Ideally we'd also have || !m_negativeCount here, but this
-    // leads to lots of diffs in async methods.
-    //
-    // Looks like we might first need to resolve reconstruction
-    // shortcomings with irreducible loops.
-    //
     bool IsGood() const
     {
-        return !m_entryWeightZero;
+        return !(m_entryWeightZero || m_negativeCount);
     }
 
     void VisitBlock(BasicBlock*) override
@@ -3527,8 +3538,9 @@ void EfficientEdgeCountReconstructor::Solve()
     //
     if (m_badcode || m_mismatch || m_allWeightsZero)
     {
-        JITDUMP("... not solving because of the %s\n",
-                m_badcode ? "badcode" : m_allWeightsZero ? "zero counts" : "mismatch");
+        JITDUMP("... not solving because of the %s\n", m_badcode          ? "badcode"
+                                                       : m_allWeightsZero ? "zero counts"
+                                                                          : "mismatch");
         return;
     }
 
@@ -3921,7 +3933,7 @@ void EfficientEdgeCountReconstructor::PropagateOSREntryEdges(BasicBlock* block, 
 
         assert(flowEdge != nullptr);
 
-        // Naive likelihood should have been set during pred initialization in fgAddRefPred
+        // Naive likelihood should have been set during pred initialization in fgLinkBasicBlocks
         //
         assert(flowEdge->hasLikelihood());
         weight_t likelihood = 0;
@@ -3980,8 +3992,8 @@ void EfficientEdgeCountReconstructor::PropagateEdges(BasicBlock* block, BlockInf
     // If there is a pseudo edge,
     // There should be only one successor for block. The flow
     // from block to successor will not represent real flow.
-    // We set likelihood anyways so we can assert later
-    // that all flow edges have known likelihood.
+    // Likelihood should be set to 1.0 already, as we already know
+    // this block has only one successor.
     //
     // Note the flowEdge target may not be the same as the pseudo edge target.
     //
@@ -3992,7 +4004,7 @@ void EfficientEdgeCountReconstructor::PropagateEdges(BasicBlock* block, BlockInf
         assert(block->HasInitializedTarget());
         FlowEdge* const flowEdge = block->GetTargetEdge();
         assert(flowEdge != nullptr);
-        flowEdge->setLikelihood(1.0);
+        assert(flowEdge->getLikelihood() == 1.0);
         return;
     }
 
@@ -5248,6 +5260,9 @@ void Compiler::fgDebugCheckProfileWeights()
 // Arguments:
 //   checks - checker options
 //
+// Returns:
+//   True if all enabled checks pass
+//
 // Notes:
 //   For each profiled block, check that the flow of counts into
 //   the block matches the flow of counts out of the block.
@@ -5259,7 +5274,7 @@ void Compiler::fgDebugCheckProfileWeights()
 //   There's no point checking until we've built pred lists, as
 //   we can't easily reason about consistency without them.
 //
-void Compiler::fgDebugCheckProfileWeights(ProfileChecks checks)
+bool Compiler::fgDebugCheckProfileWeights(ProfileChecks checks)
 {
     // We can check classic (min/max, late computed) weights
     //   and/or
@@ -5275,7 +5290,7 @@ void Compiler::fgDebugCheckProfileWeights(ProfileChecks checks)
     if (!(verifyClassicWeights || verifyLikelyWeights || verifyHasLikelihood))
     {
         JITDUMP("[profile weight checks disabled]\n");
-        return;
+        return true;
     }
 
     JITDUMP("Checking Profile Weights (flags:0x%x)\n", checks);
@@ -5438,6 +5453,8 @@ void Compiler::fgDebugCheckProfileWeights(ProfileChecks checks)
             assert(!"Inconsistent profile data");
         }
     }
+
+    return (problemBlocks == 0);
 }
 
 //------------------------------------------------------------------------
@@ -5666,6 +5683,25 @@ bool Compiler::fgDebugCheckOutgoingProfileData(BasicBlock* block, ProfileChecks 
                 else
                 {
                     likelyWeightsValid = false;
+
+#ifdef DEBUG
+                    if (verbose)
+                    {
+                        for (const FlowEdge* succEdge : block->SuccEdges(this))
+                        {
+                            const BasicBlock* succBlock = succEdge->getDestinationBlock();
+                            if (succEdge->hasLikelihood())
+                            {
+                                printf("  " FMT_BB " -> " FMT_BB ": " FMT_WT "\n", block->bbNum, succBlock->bbNum,
+                                       succEdge->getLikelihood());
+                            }
+                            else
+                            {
+                                printf("  " FMT_BB " -> " FMT_BB ": no likelihood\n", block->bbNum, succBlock->bbNum);
+                            }
+                        }
+                    }
+#endif // DEBUG
                 }
             }
         }

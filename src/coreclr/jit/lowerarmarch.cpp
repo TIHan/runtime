@@ -705,7 +705,7 @@ void Lowering::ContainBlockStoreAddress(GenTreeBlk* blkNode, unsigned size, GenT
     assert(blkNode->OperIs(GT_STORE_BLK) && (blkNode->gtBlkOpKind == GenTreeBlk::BlkOpKindUnroll));
     assert(size < INT32_MAX);
 
-    if (addr->OperIs(GT_LCL_ADDR))
+    if (addr->OperIs(GT_LCL_ADDR) && IsContainableLclAddr(addr->AsLclFld(), size))
     {
         addr->SetContained();
         return;
@@ -726,7 +726,7 @@ void Lowering::ContainBlockStoreAddress(GenTreeBlk* blkNode, unsigned size, GenT
     {
         return;
     }
-#else // !TARGET_ARM
+#else  // !TARGET_ARM
     if ((ClrSafeInt<int>(offset) + ClrSafeInt<int>(size)).IsOverflow())
     {
         return;
@@ -778,7 +778,7 @@ void Lowering::LowerPutArgStkOrSplit(GenTreePutArgStk* putArgNode)
 //    tree - GT_CAST node to be lowered
 //
 // Return Value:
-//    None.
+//    nextNode to be lowered if tree is modified else returns nullptr
 //
 // Notes:
 //    Casts from float/double to a smaller int type are transformed as follows:
@@ -791,7 +791,7 @@ void Lowering::LowerPutArgStkOrSplit(GenTreePutArgStk* putArgNode)
 //    don't expect to see them here.
 //    i) GT_CAST(float/double, int type with overflow detection)
 //
-void Lowering::LowerCast(GenTree* tree)
+GenTree* Lowering::LowerCast(GenTree* tree)
 {
     assert(tree->OperGet() == GT_CAST);
 
@@ -814,6 +814,8 @@ void Lowering::LowerCast(GenTree* tree)
 
     // Now determine if we have operands that should be contained.
     ContainCheckCast(tree->AsCast());
+
+    return nullptr;
 }
 
 //------------------------------------------------------------------------
@@ -2060,7 +2062,7 @@ void Lowering::ContainCheckIndir(GenTreeIndir* indirNode)
             MakeSrcContained(indirNode, addr);
         }
     }
-    else if (addr->OperIs(GT_LCL_ADDR))
+    else if (addr->OperIs(GT_LCL_ADDR) && IsContainableLclAddr(addr->AsLclFld(), indirNode->Size()))
     {
         // These nodes go into an addr mode:
         // - GT_LCL_ADDR is a stack addr mode.
@@ -3186,6 +3188,24 @@ void Lowering::ContainCheckHWIntrinsic(GenTreeHWIntrinsic* node)
                 }
                 break;
             }
+
+            case NI_Sve_CreateTrueMaskByte:
+            case NI_Sve_CreateTrueMaskDouble:
+            case NI_Sve_CreateTrueMaskInt16:
+            case NI_Sve_CreateTrueMaskInt32:
+            case NI_Sve_CreateTrueMaskInt64:
+            case NI_Sve_CreateTrueMaskSByte:
+            case NI_Sve_CreateTrueMaskSingle:
+            case NI_Sve_CreateTrueMaskUInt16:
+            case NI_Sve_CreateTrueMaskUInt32:
+            case NI_Sve_CreateTrueMaskUInt64:
+                assert(hasImmediateOperand);
+                assert(varTypeIsIntegral(intrin.op1));
+                if (intrin.op1->IsCnsIntOrI())
+                {
+                    MakeSrcContained(node, intrin.op1);
+                }
+                break;
 
             default:
                 unreached();
