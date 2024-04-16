@@ -5405,9 +5405,218 @@ bool Compiler::optConfigDisableCSE2()
 }
 #endif
 
+void NoOpDeallocator(void* data, size_t a, void* b)
+{
+}
+
 void Compiler::optOptimizeCSEs()
 {
     printf("CSE is looking at TensorFlow C library version %s\n", TF_Version());
+
+        TF_Graph*          graph       = TF_NewGraph();
+    TF_Status*         status      = TF_NewStatus();
+    TF_SessionOptions* SessionOpts = TF_NewSessionOptions();
+    TF_Buffer*         RunOpts     = NULL;
+
+    const char* saved_model_dir = "C:\\work\\mljit\\saved_model\\";
+    const char* tags            = "serve"; // saved_model_cli
+
+    int         ntags = 1;
+    TF_Session* session =
+        TF_LoadSessionFromSavedModel(SessionOpts, RunOpts, saved_model_dir, &tags, ntags, graph, NULL, status);
+
+    if (TF_GetCode(status) == TF_OK)
+    {
+        printf("TF_LoadSessionFromSavedModel OK\n");
+    }
+    else
+    {
+        printf("%s", TF_Message(status));
+    }
+
+    //****** Get input tensor
+    int        NumInputs = 1;
+    TF_Output* Input     = (TF_Output*)malloc(sizeof(TF_Output) * NumInputs);
+
+    TF_Output t0 = {TF_GraphOperationByName(graph, "serving_default_input_1"), 0};
+    if (t0.oper == NULL)
+        printf("ERROR: Failed TF_GraphOperationByName serving_default_input_1\n");
+    else
+        printf("TF_GraphOperationByName serving_default_input_1 is OK\n");
+
+    Input[0] = t0;
+
+    //********* Get Output tensor
+    int        NumOutputs = 2;
+    TF_Output* Output     = (TF_Output*)malloc(sizeof(TF_Output) * NumOutputs);
+
+    TF_Output t1 = {TF_GraphOperationByName(graph, "StatefulPartitionedCall"), 0};
+    if (t1.oper == NULL)
+        printf("ERROR: Failed TF_GraphOperationByName StatefulPartitionedCall\n");
+    else
+        printf("TF_GraphOperationByName StatefulPartitionedCall is OK\n");
+
+    TF_Output t2 = {TF_GraphOperationByName(graph, "StatefulPartitionedCall"), 1};
+    if (t2.oper == NULL)
+        printf("ERROR: Failed TF_GraphOperationByName StatefulPartitionedCall\n");
+    else
+        printf("TF_GraphOperationByName StatefulPartitionedCall is OK\n");
+
+    Output[0] = t1;
+    Output[1] = t2;
+
+    //********* Allocate data for inputs & outputs
+    TF_Tensor** InputValues  = (TF_Tensor**)malloc(sizeof(TF_Tensor*) * NumInputs);
+    TF_Tensor** OutputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*) * NumOutputs);
+
+    // Input 1
+    int     inputDimsNum = 2;
+    int64_t inputDims[]  = {1, 4};
+    float   inputData[]  = {4, 4, 4, 4};
+
+    int inputByteSize = sizeof(float) * ArrLen(inputData);
+
+    TF_Tensor* inputTensor1 =
+        TF_NewTensor(TF_FLOAT, inputDims, inputDimsNum, inputData, inputByteSize, &NoOpDeallocator, NULL);
+    if (inputTensor1 != NULL)
+    {
+        printf("TF_NewTensor is OK for inputTensor1\n");
+    }
+    else
+    {
+        printf("ERROR: Failed TF_NewTensor for inputTensor1\n");
+    }
+
+    InputValues[0] = inputTensor1;
+
+    // Output 1
+    int     outputDimsNum1 = 2;
+    int64_t outputDims1[]  = {1, 2};
+    float   outputData1[]  = {0, 0};
+
+    int outputByteSize1 = sizeof(float) * ArrLen(outputData1);
+
+    TF_Tensor* outputTensor1 =
+        TF_NewTensor(TF_FLOAT, outputDims1, outputDimsNum1, outputData1, outputByteSize1, &NoOpDeallocator, NULL);
+    if (outputTensor1 != NULL)
+    {
+        printf("TF_NewTensor is OK for outputTensor1\n");
+    }
+    else
+    {
+        printf("ERROR: Failed TF_NewTensor for outputTensor1\n");
+    }
+
+    OutputValues[0] = outputTensor1;
+
+    // Output 2
+    int     outputDimsNum2 = 2;
+    int64_t outputDims2[]  = {1, 1};
+    float   outputData2[]  = {0};
+
+    int outputByteSize2 = sizeof(float) * ArrLen(outputData2);
+
+    TF_Tensor* outputTensor2 =
+        TF_NewTensor(TF_FLOAT, outputDims2, outputDimsNum2, outputData2, outputByteSize2, &NoOpDeallocator, NULL);
+    if (outputTensor2 != NULL)
+    {
+        printf("TF_NewTensor is OK for outputTensor2\n");
+    }
+    else
+    {
+        printf("ERROR: Failed TF_NewTensor for outputTensor2\n");
+    }
+
+    OutputValues[1] = outputTensor2;
+
+    TF_SessionRun(session, nullptr, &Input[0], &InputValues[0], NumInputs, &Output[0], &OutputValues[0], NumOutputs,
+                  nullptr, 0, nullptr, status);
+
+    if (TF_GetCode(status) == TF_OK)
+    {
+        printf("TF_SessionRun OK\n");
+        auto   tout1 = OutputValues[0];
+        auto   nout1 = (size_t)TF_Dim(tout1, 1);
+        float* buff1 = (float*)TF_TensorData(tout1);
+        printf("Output1 (size: %zd) Value: %f, %f\n", TF_TensorByteSize(tout1), buff1[0], buff1[1]);
+        auto   tout2 = OutputValues[1];
+        auto   nout2 = (size_t)TF_Dim(tout2, 1);
+        float* buff2 = (float*)TF_TensorData(tout2);
+        printf("Output2 (size: %zd) Value: %f\n", TF_TensorByteSize(tout2), buff2[0]);
+    }
+    else
+    {
+        printf("%s", TF_Message(status));
+    }
+
+    TF_DeleteTensor(inputTensor1);
+    if (TF_GetCode(status) == TF_OK)
+    {
+        printf("TF_DeleteTensor OK\n");
+    }
+    else
+    {
+        printf("%s", TF_Message(status));
+    }
+    TF_DeleteTensor(outputTensor1);
+    if (TF_GetCode(status) == TF_OK)
+    {
+        printf("TF_DeleteTensor OK\n");
+    }
+    else
+    {
+        printf("%s", TF_Message(status));
+    }
+    TF_DeleteTensor(outputTensor2);
+    if (TF_GetCode(status) == TF_OK)
+    {
+        printf("TF_DeleteTensor OK\n");
+    }
+    else
+    {
+        printf("%s", TF_Message(status));
+    }
+
+    // Close the session.
+    TF_CloseSession(session, status);
+    if (TF_GetCode(status) == TF_OK)
+    {
+        printf("TF_CloseSession OK\n");
+    }
+    else
+    {
+        printf("%s", TF_Message(status));
+    }
+
+    // Delete the session options.
+    TF_DeleteSessionOptions(SessionOpts);
+    if (TF_GetCode(status) == TF_OK)
+    {
+        printf("TF_DeleteSessionOptions OK\n");
+    }
+    else
+    {
+        printf("%s", TF_Message(status));
+    }
+
+    // Delete the graph.
+    TF_DeleteGraph(graph);
+    if (TF_GetCode(status) == TF_OK)
+    {
+        printf("TF_DeleteGraph OK\n");
+    }
+    else
+    {
+        printf("%s", TF_Message(status));
+    }
+
+    // Delete the status.
+    TF_DeleteStatus(status);
+
+    free(InputValues);
+    free(OutputValues);
+    free(Input);
+    free(Output);
 
     if (optCSEstart != BAD_VAR_NUM)
     {
