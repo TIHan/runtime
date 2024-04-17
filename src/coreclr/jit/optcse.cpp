@@ -295,9 +295,9 @@ void RunRLCSE()
     int outputCount = 0;
 
     AddTensorOutput<float>(NumOutputs, Output, OutputValues, outputCount, graph, "StatefulPartitionedCall", 0, TF_FLOAT,
-                           2, 24, 2);
+                           2, 25, 2);
     AddTensorOutput<int64_t>(NumOutputs, Output, OutputValues, outputCount, graph, "StatefulPartitionedCall", 1,
-                             TF_INT64, 1, 24, 0); // cse_decision
+                             TF_INT64, 1, 25, 0); // cse_decision
 
     assert(NumOutputs == outputCount);
 
