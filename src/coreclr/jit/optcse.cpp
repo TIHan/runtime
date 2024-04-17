@@ -35,6 +35,8 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #define RLDUMPEXEC(x)
 #endif
 
+//#define PRINT_MLJIT_LOG
+
 void TensorBufferDeallocator(void* data, size_t a, void* b)
 {
     free(data);
@@ -60,7 +62,9 @@ T* AddTensorInput(int         NumInputs,
     }
     else
     {
+#ifdef PRINT_MLJIT_LOG
         printf("TF_GraphOperationByName '%s' is OK\n", name);
+#endif
     }
 
     size_t byteSize = 0;
@@ -72,14 +76,16 @@ T* AddTensorInput(int         NumInputs,
             byteSize += sizeof(T) * dim1;
     }
 
-    T* buffer = (T*)malloc(byteSize);
+    T* data = (T*)calloc(1, byteSize);
 
     int64_t dims[] = {dim0, dim1};
 
-    TF_Tensor* tensor = TF_NewTensor(dtype, dims, dimsNum, buffer, byteSize, &TensorBufferDeallocator, NULL);
+    TF_Tensor* tensor = TF_NewTensor(dtype, dims, dimsNum, data, byteSize, &TensorBufferDeallocator, NULL);
     if (tensor != NULL)
     {
+#ifdef PRINT_MLJIT_LOG
         printf("TF_NewTensor is OK\n");
+#endif
     }
     else
     {
@@ -91,7 +97,7 @@ T* AddTensorInput(int         NumInputs,
     InputValues[inputCount] = tensor;
     inputCount++;
 
-    return buffer;
+    return data;
 };
 
 template <typename T>
@@ -118,7 +124,9 @@ T* AddTensorOutput(int         NumOutputs,
     }
     else
     {
+#ifdef PRINT_MLJIT_LOG
         printf("TF_GraphOperationByName '%s' is OK\n", name);
+#endif
     }
 
     size_t byteSize = 0;
@@ -135,14 +143,16 @@ T* AddTensorOutput(int         NumOutputs,
         assert(!"no way");
     }
 
-    T* buffer = (T*)malloc(byteSize);
+    T* data = (T*)calloc(1, byteSize);
 
     int64_t dims[] = {dim0, dim1};
 
-    TF_Tensor* tensor = TF_NewTensor(dtype, dims, dimsNum, buffer, byteSize, &TensorBufferDeallocator, NULL);
+    TF_Tensor* tensor = TF_NewTensor(dtype, dims, dimsNum, data, byteSize, &TensorBufferDeallocator, NULL);
     if (tensor != NULL)
     {
+#ifdef PRINT_MLJIT_LOG
         printf("TF_NewTensor is OK\n");
+#endif
     }
     else
     {
@@ -154,13 +164,11 @@ T* AddTensorOutput(int         NumOutputs,
     OutputValues[outputCount] = tensor;
     outputCount++;
 
-    return buffer;
+    return data;
 };
 
 void RunRLCSE()
 {
-    printf("CSE is looking at TensorFlow C library version %s\n", TF_Version());
-
     TF_Graph*          graph       = TF_NewGraph();
     TF_Status*         status      = TF_NewStatus();
     TF_SessionOptions* SessionOpts = TF_NewSessionOptions();
@@ -175,7 +183,9 @@ void RunRLCSE()
 
     if (TF_GetCode(status) == TF_OK)
     {
+#ifdef PRINT_MLJIT_LOG
         printf("TF_LoadSessionFromSavedModel OK\n");
+#endif
     }
     else
     {
@@ -264,14 +274,14 @@ void RunRLCSE()
     AddTensorInput<int64_t>(NumInputs, Input, InputValues, inputCount, graph, "action_log_pressure_estimated_weight",
                             TF_INT64,
                             /* dimsNum */ 1, /* dim0 */ 1, /* dim1 */ 0);
-    AddTensorInput<int64_t>(NumInputs, Input, InputValues, inputCount, graph, "action_reward", TF_INT64,
+    AddTensorInput<float>(NumInputs, Input, InputValues, inputCount, graph, "action_reward", TF_FLOAT,
                             /* dimsNum */ 1,
                             /* dim0 */ 1,
                             /* dim1 */ 0);
-    AddTensorInput<int64_t>(NumInputs, Input, InputValues, inputCount, graph, "action_step_type", TF_INT64,
+    AddTensorInput<int>(NumInputs, Input, InputValues, inputCount, graph, "action_step_type", TF_INT32,
                             /* dimsNum */ 1,
                             /* dim0 */ 1, /* dim1 */ 0);
-    AddTensorInput<int64_t>(NumInputs, Input, InputValues, inputCount, graph, "action_discount", TF_INT64,
+    AddTensorInput<float>(NumInputs, Input, InputValues, inputCount, graph, "action_discount", TF_FLOAT,
                             /* dimsNum */ 1,
                             /* dim0 */ 1, /* dim1 */ 0);
 
@@ -286,30 +296,26 @@ void RunRLCSE()
 
     AddTensorOutput<float>(NumOutputs, Output, OutputValues, outputCount, graph, "StatefulPartitionedCall", 0, TF_FLOAT,
                            2, 24, 2);
-    AddTensorOutput<int64_t>(NumOutputs, Output, OutputValues, outputCount, graph, "StatefulPartitionedCall", 0,
-                             TF_INT64, 1, 24, 0);
+    AddTensorOutput<int64_t>(NumOutputs, Output, OutputValues, outputCount, graph, "StatefulPartitionedCall", 1,
+                             TF_INT64, 1, 24, 0); // cse_decision
 
     assert(NumOutputs == outputCount);
 
-    // TF_SessionRun(session, nullptr, &Input[0], &InputValues[0], NumInputs, &Output[0], &OutputValues[0], NumOutputs,
-    //               nullptr, 0, nullptr, status);
+     TF_SessionRun(session, nullptr, (TF_Output*)&Input[0], &InputValues[0], NumInputs, &Output[0], &OutputValues[0], NumOutputs,
+                   nullptr, 0, nullptr, status);
 
-    // if (TF_GetCode(status) == TF_OK)
-    //{
-    //     printf("TF_SessionRun OK\n");
-    //     auto   tout1 = OutputValues[0];
-    //     auto   nout1 = (size_t)TF_Dim(tout1, 1);
-    //     float* buff1 = (float*)TF_TensorData(tout1);
-    //     printf("Output1 (size: %zd) Value: %f, %f\n", TF_TensorByteSize(tout1), buff1[0], buff1[1]);
-    //     auto   tout2 = OutputValues[1];
-    //     auto   nout2 = (size_t)TF_Dim(tout2, 1);
-    //     float* buff2 = (float*)TF_TensorData(tout2);
-    //     printf("Output2 (size: %zd) Value: %f\n", TF_TensorByteSize(tout2), buff2[0]);
-    // }
-    // else
-    //{
-    //     printf("%s", TF_Message(status));
-    // }
+     if (TF_GetCode(status) == TF_OK)
+     {
+#ifdef PRINT_MLJIT_LOG
+        printf("TF_SessionRun OK\n");
+#endif
+        auto buff = (int64_t*)TF_TensorData(OutputValues[1]);
+        printf("cse_decision: %d\n", buff[0]);
+     }
+     else
+     {
+        printf("%s", TF_Message(status));
+     }
 
     // Delete tensors
     for (int i = 0; i < NumInputs; i++)
@@ -317,7 +323,9 @@ void RunRLCSE()
         TF_DeleteTensor(InputValues[i]);
         if (TF_GetCode(status) == TF_OK)
         {
+#ifdef PRINT_MLJIT_LOG
             printf("TF_DeleteTensor OK\n");
+#endif
         }
         else
         {
@@ -330,7 +338,9 @@ void RunRLCSE()
         TF_DeleteTensor(OutputValues[i]);
         if (TF_GetCode(status) == TF_OK)
         {
+#ifdef PRINT_MLJIT_LOG
             printf("TF_DeleteTensor OK\n");
+#endif
         }
         else
         {
@@ -342,7 +352,9 @@ void RunRLCSE()
     TF_CloseSession(session, status);
     if (TF_GetCode(status) == TF_OK)
     {
+#ifdef PRINT_MLJIT_LOG
         printf("TF_CloseSession OK\n");
+#endif
     }
     else
     {
@@ -353,7 +365,9 @@ void RunRLCSE()
     TF_DeleteSessionOptions(SessionOpts);
     if (TF_GetCode(status) == TF_OK)
     {
+#ifdef PRINT_MLJIT_LOG
         printf("TF_DeleteSessionOptions OK\n");
+#endif
     }
     else
     {
@@ -364,7 +378,9 @@ void RunRLCSE()
     TF_DeleteGraph(graph);
     if (TF_GetCode(status) == TF_OK)
     {
+#ifdef PRINT_MLJIT_LOG
         printf("TF_DeleteGraph OK\n");
+#endif
     }
     else
     {
