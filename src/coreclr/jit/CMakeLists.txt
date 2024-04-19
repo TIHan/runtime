@@ -153,6 +153,7 @@ set( JIT_SOURCES
   lower.cpp
   lsra.cpp
   lsrabuild.cpp
+  mljit.cpp
   morph.cpp
   morphblock.cpp
   objectalloc.cpp
@@ -357,6 +358,7 @@ set( JIT_HEADERS
   lsra_stats.h
   lsra_score.h
   lsra.h
+  mljit.h
   namedintrinsiclist.h
   objectalloc.h
   opcode.h
