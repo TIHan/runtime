@@ -189,14 +189,14 @@ void mljit_run_cse_policy()
     TF_Graph*          graph       = TF_NewGraph();
     TF_Status*         status      = TF_NewStatus();
     TF_SessionOptions* SessionOpts = TF_NewSessionOptions();
-    TF_Buffer*         RunOpts     = NULL;
 
-    const char* saved_policy_dir = "C:\\work\\mljit\\saved_policy\\";
-    const char* tags             = "serve"; // saved_model_cli
+    const char* savedPolicyDir = "C:\\work\\mljit\\saved_policy\\";
 
     int         ntags = 1;
+    const char* tags  = "serve";
+
     TF_Session* session =
-        TF_LoadSessionFromSavedModel(SessionOpts, RunOpts, saved_policy_dir, &tags, ntags, graph, NULL, status);
+        TF_LoadSessionFromSavedModel(SessionOpts, NULL, savedPolicyDir, &tags, ntags, graph, NULL, status);
 
     if (TF_GetCode(status) == TF_OK)
     {
@@ -298,7 +298,7 @@ void mljit_run_cse_policy()
 #endif
         auto buff      = (int64_t*)TF_TensorData(outputValues[0]);
         bool shouldCse = buff[0]; // TODO: Do something with the output.
-        // printf("shouldCse: %i\n", shouldCse);
+        //printf("shouldCse: %i\n", shouldCse);
     }
     else
     {
@@ -349,6 +349,19 @@ void mljit_run_cse_policy()
         printf("%s", TF_Message(status));
     }
 
+    // Delete the session.
+    TF_DeleteSession(session, status);
+    if (TF_GetCode(status) == TF_OK)
+    {
+#ifdef PRINT_MLJIT_LOG
+        printf("TF_DeleteSession OK\n");
+#endif
+    }
+    else
+    {
+        printf("%s", TF_Message(status));
+    }
+
     // Delete the session options.
     TF_DeleteSessionOptions(SessionOpts);
     if (TF_GetCode(status) == TF_OK)
@@ -378,6 +391,7 @@ void mljit_run_cse_policy()
     // Delete the status.
     TF_DeleteStatus(status);
 
+    // cleanup
     free(inputValues);
     free(outputValues);
     free(input);
