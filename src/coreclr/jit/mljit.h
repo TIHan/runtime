@@ -4,6 +4,8 @@
 #ifndef _MLJIT_H
 #define _MLJIT_H
 
+#ifdef DEBUG
+
 #include "tensorflow\c\c_api.h"
 #include "compiler.h"
 
@@ -31,5 +33,7 @@ MLJIT_Session* mljit_session_create_cse();
 void mljit_session_destroy(MLJIT_Session* mljitSession);
 
 void mljit_session_action(MLJIT_Session* mljitSession);
+
+#endif // DEBUG
 
 #endif // _MLJIT_H

@@ -16,6 +16,8 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #pragma hdrstop
 #endif
 
+#ifdef DEBUG
+
 #include "mljit.h"
 
 // #define PRINT_MLJIT_LOG
@@ -447,3 +449,5 @@ void mljit_session_action(MLJIT_Session* mljitSession)
         printf("%s", TF_Message(status));
     }
 }
+
+#endif // DEBUG
