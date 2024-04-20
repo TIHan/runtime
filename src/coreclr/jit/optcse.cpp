@@ -5407,7 +5407,14 @@ bool Compiler::optConfigDisableCSE2()
 
 void Compiler::optOptimizeCSEs()
 {
-    mljit_run_cse_policy(); // TODO: Just a test, not the real thing.
+    // Create it once.
+    static auto session = mljit_session_create_cse();
+    // This is just a test to run the session 5 times.
+    for (int i = 0; i < 5; i++)
+    {
+        mljit_session_action(session);
+    }
+    //mljit_session_destroy(session);
 
     if (optCSEstart != BAD_VAR_NUM)
     {

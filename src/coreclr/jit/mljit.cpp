@@ -12,7 +12,6 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 #include "jitpch.h"
 #include "jitstd/algorithm.h"
-#include "tensorflow\c\c_api.h"
 #ifdef _MSC_VER
 #pragma hdrstop
 #endif
@@ -20,6 +19,10 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #include "mljit.h"
 
 // #define PRINT_MLJIT_LOG
+
+MLJIT_Session::MLJIT_Session()
+{
+}
 
 void TensorBufferDeallocator(void* data, size_t a, void* b)
 {
@@ -184,11 +187,11 @@ T* AddScalarOutput(int         numOutputs,
     return AddTensorOutput<T>(numOutputs, output, outputValues, outputCount, graph, name, dtype, index, 1, 1, 0);
 }
 
-void mljit_run_cse_policy()
+MLJIT_Session* mljit_session_create_cse()
 {
     TF_Graph*          graph       = TF_NewGraph();
     TF_Status*         status      = TF_NewStatus();
-    TF_SessionOptions* SessionOpts = TF_NewSessionOptions();
+    TF_SessionOptions* sessionOpts = TF_NewSessionOptions();
 
     const char* savedPolicyDir = "C:\\work\\mljit\\saved_policy\\";
 
@@ -196,7 +199,7 @@ void mljit_run_cse_policy()
     const char* tags  = "serve";
 
     TF_Session* session =
-        TF_LoadSessionFromSavedModel(SessionOpts, NULL, savedPolicyDir, &tags, ntags, graph, NULL, status);
+        TF_LoadSessionFromSavedModel(sessionOpts, NULL, savedPolicyDir, &tags, ntags, graph, NULL, status);
 
     if (TF_GetCode(status) == TF_OK)
     {
@@ -288,23 +291,37 @@ void mljit_run_cse_policy()
 
     assert(numOutputs == outputCount);
 
-    TF_SessionRun(session, nullptr, (TF_Output*)&input[0], &inputValues[0], numInputs, &output[0], &outputValues[0],
-                  numOutputs, nullptr, 0, nullptr, status);
 
-    if (TF_GetCode(status) == TF_OK)
-    {
-#ifdef PRINT_MLJIT_LOG
-        printf("TF_SessionRun OK\n");
-#endif
-        auto buff      = (int64_t*)TF_TensorData(outputValues[0]);
-        bool shouldCse = buff[0]; // TODO: Do something with the output.
-        //printf("shouldCse: %i\n", shouldCse);
-    }
-    else
-    {
-        printf("%s", TF_Message(status));
-    }
+    //********* MLJIT_Session
+    auto mljitSession          = new MLJIT_Session();
+    mljitSession->graph        = graph;
+    mljitSession->status       = status;
+    mljitSession->sessionOpts  = sessionOpts;
+    mljitSession->session      = session;
+    mljitSession->numInputs    = numInputs;
+    mljitSession->input        = input;
+    mljitSession->inputValues  = inputValues;
+    mljitSession->numOutputs   = numOutputs;
+    mljitSession->output       = output;
+    mljitSession->outputValues = outputValues;
+    return mljitSession;
+}
 
+void mljit_session_destroy(MLJIT_Session* mljitSession)
+{
+    auto graph       = mljitSession->graph;
+    auto status      = mljitSession->status;
+    auto sessionOpts = mljitSession->sessionOpts;
+    auto session     = mljitSession->session;
+
+    auto numInputs   = mljitSession->numInputs;
+    auto input       = mljitSession->input;
+    auto inputValues = mljitSession->inputValues;
+
+    auto numOutputs   = mljitSession->numOutputs;
+    auto output       = mljitSession->output;
+    auto outputValues = mljitSession->outputValues;
+    
     // Delete tensors
     for (int i = 0; i < numInputs; i++)
     {
@@ -363,7 +380,7 @@ void mljit_run_cse_policy()
     }
 
     // Delete the session options.
-    TF_DeleteSessionOptions(SessionOpts);
+    TF_DeleteSessionOptions(sessionOpts);
     if (TF_GetCode(status) == TF_OK)
     {
 #ifdef PRINT_MLJIT_LOG
@@ -396,4 +413,37 @@ void mljit_run_cse_policy()
     free(outputValues);
     free(input);
     free(output);
+
+    delete mljitSession;
+}
+
+void mljit_session_action(MLJIT_Session* mljitSession)
+{
+    auto status  = mljitSession->status;
+    auto session = mljitSession->session;
+
+    auto numInputs   = mljitSession->numInputs;
+    auto input       = mljitSession->input;
+    auto inputValues = mljitSession->inputValues;
+
+    auto numOutputs   = mljitSession->numOutputs;
+    auto output       = mljitSession->output;
+    auto outputValues = mljitSession->outputValues;
+
+    TF_SessionRun(session, nullptr, (TF_Output*)&input[0], &inputValues[0], numInputs, &output[0], &outputValues[0],
+                  numOutputs, nullptr, 0, nullptr, status);
+
+    if (TF_GetCode(status) == TF_OK)
+    {
+#ifdef PRINT_MLJIT_LOG
+        printf("TF_SessionRun OK\n");
+#endif
+        auto buff      = (int64_t*)TF_TensorData(outputValues[0]);
+        bool shouldCse = buff[0]; // TODO: Do something with the output.
+        //printf("shouldCse: %i\n", shouldCse);
+    }
+    else
+    {
+        printf("%s", TF_Message(status));
+    }
 }
