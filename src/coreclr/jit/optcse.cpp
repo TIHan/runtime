@@ -5445,7 +5445,7 @@ void Compiler::optOptimizeCSEs()
             session->SetInput_reward(0);
             session->SetInput_step_type(0);
             session->SetInput_discount(0);
-            mljit_session_action(session);
+            session->Action();
             bool cseDecision = session->GetOutput_cse_decision();
             session->LogAction();
         }

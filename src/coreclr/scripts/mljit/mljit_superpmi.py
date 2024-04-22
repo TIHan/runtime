@@ -257,14 +257,14 @@ def collect_data(spmi_indices):
 
         superpmi_processes = create_many_superpmi_processes(clrjit_dll, corpus_file_path)
 
-        print("")
+        print("[mljit] Collecting data...")
         print(f'core_root:\t\t{core_root}')
         print(f'clrjit_dll:\t\t{clrjit_dll}')
         print(f'superpmi_exe:\t\t{superpmi_exe}')
         print(f'Corpus:\t\t\t{corpus_file_path}')
-        print(f'SuperPMI Process Count:\t{len(superpmi_processes)}')
+        print(f'[mljit] SuperPMI Process Count:\t{len(superpmi_processes)}')
 
-        print("\nSuperPMI starting...\n")
+        print("\n[mljit] SuperPMI starting...\n")
 
         time_stamp = now()
 
@@ -284,11 +284,11 @@ def collect_data(spmi_indices):
         #     for x in results:
         #         print(x)
 
-    print(f'\nSuperPMI stopping...\n')
+    print(f'\n[mljit] SuperPMI stopping...')
 
     for p in superpmi_processes:
         superpmi_terminate(p)
 
-    print(f'Finished in: {now() - time_stamp}')
+    print(f'[mljit] SuperPMI finished in: {now() - time_stamp}\n')
     return results
 # --------------------------------------------------------------------------------

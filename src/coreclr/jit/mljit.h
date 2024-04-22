@@ -45,6 +45,8 @@ class MLJIT_Session
 public:
     MLJIT_Session();
 
+    void Action();
+
     TF_Graph*          graph;
     TF_Status*         status;
     TF_SessionOptions* sessionOpts;
@@ -224,8 +226,6 @@ public:
 MLJIT_Session_CSE* mljit_session_try_create_cse(const char* savedPolicyDir);
 
 void mljit_session_destroy(MLJIT_Session* mljitSession);
-
-void mljit_session_action(MLJIT_Session* mljitSession);
 
 #endif // DEBUG
 

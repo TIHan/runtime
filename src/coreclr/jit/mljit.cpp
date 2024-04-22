@@ -419,18 +419,18 @@ void mljit_session_destroy(MLJIT_Session* mljitSession)
     delete mljitSession;
 }
 
-void mljit_session_action(MLJIT_Session* mljitSession)
+void MLJIT_Session::Action()
 {
-    auto status  = mljitSession->status;
-    auto session = mljitSession->session;
+    auto status  = this->status;
+    auto session = this->session;
 
-    auto numInputs   = mljitSession->numInputs;
-    auto input       = mljitSession->input;
-    auto inputValues = mljitSession->inputValues;
+    auto numInputs   = this->numInputs;
+    auto input       = this->input;
+    auto inputValues = this->inputValues;
 
-    auto numOutputs   = mljitSession->numOutputs;
-    auto output       = mljitSession->output;
-    auto outputValues = mljitSession->outputValues;
+    auto numOutputs   = this->numOutputs;
+    auto output       = this->output;
+    auto outputValues = this->outputValues;
 
     TF_SessionRun(session, nullptr, (TF_Output*)&input[0], &inputValues[0], numInputs, &output[0], &outputValues[0],
                   numOutputs, nullptr, 0, nullptr, status);
