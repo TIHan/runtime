@@ -520,4 +520,5 @@ for _ in range(test_num_runs):
     sequence_examples = list(map(create_serialized_sequence_example, data_logs))
 
     train(sequence_examples)
+    
     save_policy()
