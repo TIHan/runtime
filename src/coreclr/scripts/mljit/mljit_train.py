@@ -507,18 +507,19 @@ def save_policy():
     policy_saver.save(saved_policy_path)
     print(f"[mljit] Saved model in '{saved_policy_path}'!")
 
+def collect_data(spmi_indices):
+    data = mljit_superpmi.collect_data(spmi_indices)
+    data_logs = flatten(map(lambda x: x.log, data))
+    return list(map(create_serialized_sequence_example, data_logs))
+
 # ---------------------------------------
 
+# Save initial policy.
+save_policy()
+
 test_num_runs = 2
+test_spmi_indices = [37 for _ in range(5000)]
 for _ in range(test_num_runs):
-    test_spmi_indices = [37 for _ in range(5000)]
-
-    data = mljit_superpmi.collect_data(test_spmi_indices)
-
-    data_logs = flatten(map(lambda x: x.log, data))
-
-    sequence_examples = list(map(create_serialized_sequence_example, data_logs))
-
+    sequence_examples = collect_data(test_spmi_indices)
     train(sequence_examples)
-    
     save_policy()
