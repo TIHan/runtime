@@ -501,6 +501,12 @@ def train(sequence_examples):
 
         agent.train(experience)
 
+def save_policy():
+    policy_saver = PolicySaver(agent.policy, batch_size=1, use_nest_path_signatures=False)
+    print(f"[mljit] Saving model in '{saved_policy_path}'...")
+    policy_saver.save(saved_policy_path)
+    print(f"[mljit] Saved model in '{saved_policy_path}'!")
+
 # ---------------------------------------
 
 test_num_runs = 2
@@ -514,9 +520,4 @@ for _ in range(test_num_runs):
     sequence_examples = list(map(create_serialized_sequence_example, data_logs))
 
     train(sequence_examples)
-
-    policy_saver = PolicySaver(agent.policy, batch_size=1, use_nest_path_signatures=False)
-
-    print(f"[mljit] Saving model in '{saved_policy_path}'...")
-    policy_saver.save(saved_policy_path)
-    print(f"[mljit] Saved model in '{saved_policy_path}'!")
+    save_policy()
