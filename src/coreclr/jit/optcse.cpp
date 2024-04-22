@@ -5413,7 +5413,36 @@ void Compiler::optOptimizeCSEs()
     // This is just a test to run the session 5 times.
     for (int i = 0; i < 5; i++)
     {
+        session->SetInput_cse_cost_ex(0);
+        session->SetInput_cse_use_count_weighted_log(0);
+        session->SetInput_cse_def_count_weighted_log(0);
+        session->SetInput_cse_cost_sz(0);
+        session->SetInput_cse_use_count(0);
+        session->SetInput_cse_def_count(0);
+        session->SetInput_cse_is_live_across_call(0);
+        session->SetInput_cse_is_int(0);
+        session->SetInput_cse_is_constant_not_shared(0);
+        session->SetInput_cse_is_shared_constant(0);
+        session->SetInput_cse_cost_is_MIN_CSE_COST(0);
+        session->SetInput_cse_is_constant_live_across_call(0);
+        session->SetInput_cse_is_constant_min_cost(0);
+        session->SetInput_cse_cost_is_MIN_CSE_COST_live_across_call(0);
+        session->SetInput_cse_is_GTF_MAKE_CSE(0);
+        session->SetInput_cse_num_distinct_locals(0);
+        session->SetInput_cse_num_local_occurrences(0);
+        session->SetInput_cse_has_call(0);
+        session->SetInput_log_cse_use_count_weighted_times_cost_ex(0);
+        session->SetInput_log_cse_use_count_weighted_times_num_local_occurrences(0);
+        session->SetInput_cse_distance(0);
+        session->SetInput_cse_is_containable(0);
+        session->SetInput_cse_is_cheap_containable(0);
+        session->SetInput_cse_is_live_across_call_in_LSRA_ordering(0);
+        session->SetInput_log_pressure_estimated_weight(0);
+        session->SetInput_reward(0);
+        session->SetInput_step_type(0);
+        session->SetInput_discount(0);
         mljit_session_action(session);
+        bool cseDecision = session->GetOutput_cse_decision();
     }
     //mljit_session_destroy(session);
 #endif // DEBUG

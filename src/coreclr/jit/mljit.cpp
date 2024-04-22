@@ -189,7 +189,7 @@ T* AddScalarOutput(int         numOutputs,
     return AddTensorOutput<T>(numOutputs, output, outputValues, outputCount, graph, name, dtype, index, 1, 1, 0);
 }
 
-MLJIT_Session* mljit_session_create_cse()
+MLJIT_Session_CSE* mljit_session_create_cse()
 {
     TF_Graph*          graph       = TF_NewGraph();
     TF_Status*         status      = TF_NewStatus();
@@ -293,9 +293,8 @@ MLJIT_Session* mljit_session_create_cse()
 
     assert(numOutputs == outputCount);
 
-
     //********* MLJIT_Session
-    auto mljitSession          = new MLJIT_Session();
+    auto mljitSession          = new MLJIT_Session_CSE();
     mljitSession->graph        = graph;
     mljitSession->status       = status;
     mljitSession->sessionOpts  = sessionOpts;
@@ -440,9 +439,6 @@ void mljit_session_action(MLJIT_Session* mljitSession)
 #ifdef PRINT_MLJIT_LOG
         printf("TF_SessionRun OK\n");
 #endif
-        auto buff      = (int64_t*)TF_TensorData(outputValues[0]);
-        bool shouldCse = buff[0]; // TODO: Do something with the output.
-        //printf("shouldCse: %i\n", shouldCse);
     }
     else
     {

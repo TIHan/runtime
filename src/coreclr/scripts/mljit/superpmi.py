@@ -225,7 +225,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=superpmi_process_count) a
         return executor.submit(jit, spmi_index, superpmi_processes)
 
     # 300000 methods - dummy data
-    indices = [37 for _ in range(300000)]
+    indices = [37 for _ in range(3)]
 
     superpmi_processes = create_many_superpmi_processes(clrjit_dll, corpus_file_path)
 
