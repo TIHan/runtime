@@ -189,13 +189,14 @@ T* AddScalarOutput(int         numOutputs,
     return AddTensorOutput<T>(numOutputs, output, outputValues, outputCount, graph, name, dtype, index, 1, 1, 0);
 }
 
-MLJIT_Session_CSE* mljit_session_create_cse()
+MLJIT_Session_CSE* mljit_session_try_create_cse(const char* savedPolicyDir)
 {
+    if (!savedPolicyDir)
+        return nullptr;
+
     TF_Graph*          graph       = TF_NewGraph();
     TF_Status*         status      = TF_NewStatus();
     TF_SessionOptions* sessionOpts = TF_NewSessionOptions();
-
-    const char* savedPolicyDir = "C:\\work\\mljit\\saved_policy\\";
 
     int         ntags = 1;
     const char* tags  = "serve";

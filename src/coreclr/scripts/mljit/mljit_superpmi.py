@@ -9,6 +9,8 @@ import multiprocessing
 import random
 import sys
 import concurrent.futures
+import json
+from types import SimpleNamespace
 from dataclasses import dataclass
 from threading import Thread
 from queue import SimpleQueue
@@ -16,10 +18,12 @@ from subprocess import PIPE
 
 # --------------------------------------------------------------------------------
 
-core_root        = os.environ['CORE_ROOT']
-corpus_file_path = os.environ['DOTNET_MLJIT_CORPUS_FILE']
-superpmi_exe     = os.path.join(core_root, 'superpmi.exe') # TODO: Only works on windows, fix it for other OSes
-clrjit_dll       = os.path.join(core_root, 'clrjit.dll') # TODO: Only works on windows, fix it for other OSes
+core_root         = os.environ['CORE_ROOT']
+log_path          = os.environ['DOTNET_MLJitLogPath']
+corpus_file_path  = os.environ['DOTNET_MLJitCorpusFile']
+saved_policy_path = os.environ['DOTNET_MLJitSavedPolicyPath']
+superpmi_exe      = os.path.join(core_root, 'superpmi.exe') # TODO: Only works on windows, fix it for other OSes
+clrjit_dll        = os.path.join(core_root, 'clrjit.dll') # TODO: Only works on windows, fix it for other OSes
 
 # --------------------------------------------------------------------------------
 # Utility
@@ -77,6 +81,7 @@ class Method:
     baseLikelihood: str
     feature: str
     codeSize: float
+    log: any
 
 def create_superpmi_process(clrjit_dll_path, mch_path):
     l = threading.Event()
@@ -90,6 +95,7 @@ def create_superpmi_process(clrjit_dll_path, mch_path):
     # Any errors will still be printed though.
     superpmi_env['TF_ENABLE_ONEDNN_OPTS'] = "0"
     superpmi_env['TF_CPP_MIN_LOG_LEVEL'] = "3"
+    superpmi_env['DOTNET_MLJitSavedPolicyPath'] = saved_policy_path
 
     superpmi_args = [
             superpmi_exe, 
@@ -113,6 +119,9 @@ def create_superpmi_process(clrjit_dll_path, mch_path):
     def consume_output(p, q):
         while p.poll() is None:
             line = p.stdout.readline()
+            # Uncomment below for debugging
+            # if line:
+            #     print(line)
             if not line.startswith("[streaming]") and not line.isspace():
                 q.put(line)
 
@@ -151,7 +160,8 @@ def parse_mldump_line(line):
             likelihoodPattern,
             baseLikelihoodPattern,
             featurePattern,
-            float(codeSizePattern)
+            float(codeSizePattern),
+            None
         )
 
 def parse_mldump(lines):
@@ -168,17 +178,36 @@ def parse_mldump_file():
     dump_file.close()
     return parse_mldump(lines)
 
+def parse_log_file(path):
+    try:
+        f = open(path)
+        data = json.load(f, object_hook=lambda d: SimpleNamespace(**d))
+        f.close()
+        return data;
+    except Exception as error:
+        print(f'There was an error when parsing a log file from the JIT output:\n{error}')
+        return None
+
 # --------------------------------------------------------------------------------
 
 def superpmi_jit(superpmi_process, spmi_index):
     (p, _, q, _) = superpmi_process
-    p.stdin.write(f'{spmi_index}\n')
+    log_file = os.path.join(log_path, f'_mljit_log_{p.pid}.json')
+    p.stdin.write(f'{spmi_index} !MLJitTrainLogFile={log_file}\n')
     try:
         line = q.get(timeout=60)
-        return parse_mldump_line(line)
+        meth = parse_mldump_line(line)
+        meth.log = parse_log_file(log_file)
+        return meth
     except Exception as error:
         print(f'There was an error when parsing a line from the JIT output:\n{error}')
         return None
+    finally:
+        try:
+            os.remove(log_file)
+        except Exception as error:
+            print(f'There was an error when removing the log file:\n{error}')
+
 
 def superpmi_terminate(superpmi_process):
     (p, t, _, _) = superpmi_process
@@ -220,46 +249,46 @@ def jit(spmi_index, superpmi_processes):
     return result
 
 # --------------------------------------------------------------------------------
-with concurrent.futures.ThreadPoolExecutor(max_workers=superpmi_process_count) as executor:
-    def create_jit_task(spmi_index):
-        return executor.submit(jit, spmi_index, superpmi_processes)
+def collect_data(spmi_indices):
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=superpmi_process_count) as executor:
+        def create_jit_task(spmi_index):
+            return executor.submit(jit, spmi_index, superpmi_processes)
 
-    # 300000 methods - dummy data
-    indices = [37 for _ in range(3)]
+        superpmi_processes = create_many_superpmi_processes(clrjit_dll, corpus_file_path)
 
-    superpmi_processes = create_many_superpmi_processes(clrjit_dll, corpus_file_path)
+        print("")
+        print(f'core_root:\t\t{core_root}')
+        print(f'clrjit_dll:\t\t{clrjit_dll}')
+        print(f'superpmi_exe:\t\t{superpmi_exe}')
+        print(f'Corpus:\t\t\t{corpus_file_path}')
+        print(f'SuperPMI Process Count:\t{len(superpmi_processes)}')
 
-    print("")
-    print(f'core_root:\t\t{core_root}')
-    print(f'clrjit_dll:\t\t{clrjit_dll}')
-    print(f'superpmi_exe:\t\t{superpmi_exe}')
-    print(f'Corpus:\t\t\t{corpus_file_path}')
-    print(f'SuperPMI Process Count:\t{len(superpmi_processes)}')
+        print("\nSuperPMI starting...\n")
 
-    print("\nSuperPMI starting...\n")
+        time_stamp = now()
 
-    time_stamp = now()
+        tasks = list(map(lambda i: create_jit_task(i), spmi_indices))
 
-    tasks = list(map(lambda i: create_jit_task(i), indices))
+        def eval(task):
+            try:
+                return task.result()
+            except Exception:
+                return None
+        results = list(filter(lambda x: x is not None, map(eval, tasks)))
+        # TODO: do something with the results
 
-    def eval(task):
-        try:
-            return task.result()
-        except Exception:
-            return None
-    results = list(filter(lambda x: x is not None, map(eval, tasks)))
-    # TODO: do something with the results
+        if not results:
+            print("Warning: No method results were returned. Check if SuperPMI is being invoked correctly.")
+        # else:
+        #     for x in results:
+        #         print(x)
 
-    if not results:
-        print("Warning: No method results were returned. Check if SuperPMI is being invoked correctly.")
-    # else:
-    #     for x in results:
-    #         print(x)
+    print(f'\nSuperPMI stopping...\n')
 
-print(f'\nSuperPMI stopping...\n')
+    for p in superpmi_processes:
+        superpmi_terminate(p)
 
-for p in superpmi_processes:
-    superpmi_terminate(p)
-
-print(f'Finished in: {now() - time_stamp}')
+    print(f'Finished in: {now() - time_stamp}')
+    return results
 # --------------------------------------------------------------------------------

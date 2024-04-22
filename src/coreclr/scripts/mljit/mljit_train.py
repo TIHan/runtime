@@ -4,7 +4,10 @@ import collections
 import numpy as np
 import statistics
 import tensorflow as tf
+import json
+import mljit_superpmi
 from typing import Any, List, Sequence, Tuple, Callable, Optional, Dict
+from types import SimpleNamespace
 from tf_agents.specs import tensor_spec, array_spec
 from tf_agents.trajectories import time_step, trajectory
 from tf_agents.agents.ppo import ppo_agent
@@ -19,10 +22,12 @@ from tf_agents.policies import PolicySaver
 from tf_agents.utils import common as common_utils
 from absl import logging
 
-# # Prevents a warning
-# os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+# Use 'saved_model_cli show --dir saved_policy\ --tag_set serve --signature_def action' from the command line to see the inputs/outputs of the policy.
 
-saved_policy_path = os.environ['DOTNET_MLJIT_SAVED_POLICY_PATH']
+saved_policy_path = os.environ['DOTNET_MLJitSavedPolicyPath']
+
+def flatten(xss):
+    return [x for xs in xss for x in xs]
 
 # This was from MLGO, but not really sure what it is.
 class ConstantValueNetwork(network.Network):
@@ -202,185 +207,185 @@ def step_action(step_type: int, reward: float, discount: float, observation: lis
 
 # ---------------------------------------
 
-many_cse_cost_ex = tf.train.FeatureList(feature=[
-    tf.train.Feature(float_list=tf.train.FloatList(
-        value=[0.0]))
-])
+def create_sequence_example(data):
+    
+    many_cse_cost_ex = tf.train.FeatureList(feature=[
+        tf.train.Feature(float_list=tf.train.FloatList(
+            value=[float(data.cse_cost_ex)]))
+    ])
 
-many_cse_use_count_weighted_log = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_use_count_weighted_log = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_use_count_weighted_log)]))
+    ])
 
-many_cse_def_count_weighted_log = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_def_count_weighted_log = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_def_count_weighted_log)]))
+    ])
 
-many_cse_cost_sz = tf.train.FeatureList(feature=[
-    tf.train.Feature(float_list=tf.train.FloatList(
-        value=[0.0]))
-])
+    many_cse_cost_sz = tf.train.FeatureList(feature=[
+        tf.train.Feature(float_list=tf.train.FloatList(
+            value=[float(data.cse_cost_sz)]))
+    ])
 
-many_cse_use_count = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_use_count = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_use_count)]))
+    ])
 
-many_cse_def_count = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_def_count = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_def_count)]))
+    ])
 
-many_cse_is_live_across_call = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_is_live_across_call = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_is_live_across_call)]))
+    ])
 
-many_cse_is_int = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_is_int = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_is_int)]))
+    ])
 
-many_cse_is_constant_not_shared = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_is_constant_not_shared = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_is_constant_not_shared)]))
+    ])
 
-many_cse_is_constant_not_shared = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_is_shared_constant = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_is_shared_constant)]))
+    ])
 
-many_cse_is_shared_constant = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_cost_is_MIN_CSE_COST = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_cost_is_MIN_CSE_COST)]))
+    ])
 
-many_cse_cost_is_MIN_CSE_COST = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_is_constant_live_across_call = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_is_constant_live_across_call)]))
+    ])
 
-many_cse_is_constant_live_across_call = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_is_constant_min_cost = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_is_constant_min_cost)]))
+    ])
 
-many_cse_is_constant_min_cost = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_cost_is_MIN_CSE_COST_live_across_call = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_cost_is_MIN_CSE_COST_live_across_call)]))
+    ])
 
-many_cse_cost_is_MIN_CSE_COST_live_across_call = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_is_GTF_MAKE_CSE = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_is_GTF_MAKE_CSE)]))
+    ])
 
-many_cse_is_GTF_MAKE_CSE = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_num_distinct_locals = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_num_distinct_locals)]))
+    ])
 
-many_cse_num_distinct_locals = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_num_local_occurrences = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_num_local_occurrences)]))
+    ])
 
-many_cse_num_local_occurrences = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_has_call = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_has_call)]))
+    ])
 
-many_cse_has_call = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_log_cse_use_count_weighted_times_cost_ex = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.log_cse_use_count_weighted_times_cost_ex)]))
+    ])
 
-many_log_cse_use_count_weighted_times_cost_ex = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_log_cse_use_count_weighted_times_num_local_occurrences = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.log_cse_use_count_weighted_times_num_local_occurrences)]))
+    ])
 
-many_log_cse_use_count_weighted_times_num_local_occurrences = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_distance = tf.train.FeatureList(feature=[
+        tf.train.Feature(float_list=tf.train.FloatList(
+            value=[float(data.cse_distance)]))
+    ])
 
-many_cse_distance = tf.train.FeatureList(feature=[
-    tf.train.Feature(float_list=tf.train.FloatList(
-        value=[0.0]))
-])
+    many_cse_is_containable = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_is_containable)]))
+    ])
 
-many_cse_is_containable = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_is_cheap_containable = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_is_cheap_containable)]))
+    ])
 
-many_cse_is_cheap_containable = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_is_live_across_call_in_LSRA_ordering = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_is_live_across_call_in_LSRA_ordering)]))
+    ])
 
-many_cse_is_live_across_call_in_LSRA_ordering = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_log_pressure_estimated_weight = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.log_pressure_estimated_weight)]))
+    ])
 
-many_log_pressure_estimated_weight = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_cse_decision = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_decision)]))
+    ])
 
-many_cse_decision = tf.train.FeatureList(feature=[
-    tf.train.Feature(int64_list=tf.train.Int64List(
-        value=[0]))
-])
+    many_reward = tf.train.FeatureList(feature=[
+        tf.train.Feature(float_list=tf.train.FloatList(
+            value=[float(data.reward)]))
+    ])
 
-many_reward = tf.train.FeatureList(feature=[
-    tf.train.Feature(float_list=tf.train.FloatList(
-        value=[0.0]))
-])
+    many_logits = tf.train.FeatureList(feature=[
+        tf.train.Feature(float_list=tf.train.FloatList(
+            value=[0.0, 0.0]))
+    ])
 
-many_logits = tf.train.FeatureList(feature=[
-    tf.train.Feature(float_list=tf.train.FloatList(
-        value=[0.0, 0.0]))
-])
+    feature_dict = {
+        'cse_cost_ex': many_cse_cost_ex,
+        'cse_use_count_weighted_log': many_cse_use_count_weighted_log,
+        'cse_def_count_weighted_log': many_cse_def_count_weighted_log,
+        'cse_cost_sz': many_cse_cost_sz,
+        'cse_use_count': many_cse_use_count,
+        'cse_def_count': many_cse_def_count,
+        'cse_is_live_across_call': many_cse_is_live_across_call,
+        'cse_is_int': many_cse_is_int,
+        'cse_is_constant_not_shared': many_cse_is_constant_not_shared,
+        'cse_is_shared_constant': many_cse_is_shared_constant,
+        'cse_cost_is_MIN_CSE_COST': many_cse_cost_is_MIN_CSE_COST,
+        'cse_is_constant_live_across_call': many_cse_is_constant_live_across_call,
+        'cse_is_constant_min_cost': many_cse_is_constant_min_cost,
+        'cse_cost_is_MIN_CSE_COST_live_across_call': many_cse_cost_is_MIN_CSE_COST_live_across_call,
+        'cse_is_GTF_MAKE_CSE': many_cse_is_GTF_MAKE_CSE,
+        'cse_num_distinct_locals': many_cse_num_distinct_locals,
+        'cse_num_local_occurrences': many_cse_num_local_occurrences,
+        'cse_has_call': many_cse_has_call,
+        'log_cse_use_count_weighted_times_cost_ex': many_log_cse_use_count_weighted_times_cost_ex,
+        'log_cse_use_count_weighted_times_num_local_occurrences': many_log_cse_use_count_weighted_times_num_local_occurrences,
+        'cse_distance': many_cse_distance,
+        'cse_is_containable': many_cse_is_containable,
+        'cse_is_cheap_containable': many_cse_is_cheap_containable,
+        'cse_is_live_across_call_in_LSRA_ordering': many_cse_is_live_across_call_in_LSRA_ordering,
+        'log_pressure_estimated_weight': many_log_pressure_estimated_weight,
+        'cse_decision': many_cse_decision,
+        'reward': many_reward,
+        'CategoricalProjectionNetwork_logits': many_logits
+    }
 
-feature_dict = {
-  'cse_cost_ex': many_cse_cost_ex,
-  'cse_use_count_weighted_log': many_cse_use_count_weighted_log,
-  'cse_def_count_weighted_log': many_cse_def_count_weighted_log,
-  'cse_cost_sz': many_cse_cost_sz,
-  'cse_use_count': many_cse_use_count,
-  'cse_def_count': many_cse_def_count,
-  'cse_is_live_across_call': many_cse_is_live_across_call,
-  'cse_is_int': many_cse_is_int,
-  'cse_is_constant_not_shared': many_cse_is_constant_not_shared,
-  'cse_is_shared_constant': many_cse_is_shared_constant,
-  'cse_cost_is_MIN_CSE_COST': many_cse_cost_is_MIN_CSE_COST,
-  'cse_is_constant_live_across_call': many_cse_is_constant_live_across_call,
-  'cse_is_constant_min_cost': many_cse_is_constant_min_cost,
-  'cse_cost_is_MIN_CSE_COST_live_across_call': many_cse_cost_is_MIN_CSE_COST_live_across_call,
-  'cse_is_GTF_MAKE_CSE': many_cse_is_GTF_MAKE_CSE,
-  'cse_num_distinct_locals': many_cse_num_distinct_locals,
-  'cse_num_local_occurrences': many_cse_num_local_occurrences,
-  'cse_has_call': many_cse_has_call,
-  'log_cse_use_count_weighted_times_cost_ex': many_log_cse_use_count_weighted_times_cost_ex,
-  'log_cse_use_count_weighted_times_num_local_occurrences': many_log_cse_use_count_weighted_times_num_local_occurrences,
-  'cse_distance': many_cse_distance,
-  'cse_is_containable': many_cse_is_containable,
-  'cse_is_cheap_containable': many_cse_is_cheap_containable,
-  'cse_is_live_across_call_in_LSRA_ordering': many_cse_is_live_across_call_in_LSRA_ordering,
-  'log_pressure_estimated_weight': many_log_pressure_estimated_weight,
-  'cse_decision': many_cse_decision,
-  'reward': many_reward,
-  'CategoricalProjectionNetwork_logits': many_logits
-}
+    feature_lists = tf.train.FeatureLists(feature_list=feature_dict)
 
-feature_lists = tf.train.FeatureLists(feature_list=feature_dict)
+    return tf.train.SequenceExample(context={},feature_lists=feature_lists)
 
-example = tf.train.SequenceExample(context={},feature_lists=feature_lists)
+def create_serialized_sequence_example(data):
+   return create_sequence_example(data).SerializeToString()
 
 # ---------------------------------------
 
@@ -498,13 +503,20 @@ def train(sequence_examples):
 
 # ---------------------------------------
 
-test_sequence_examples = [example.SerializeToString() for _ in range(train_sequence_length * batch_size)]
-train(test_sequence_examples)
+test_num_runs = 2
+for _ in range(test_num_runs):
+    test_spmi_indices = [37 for _ in range(5000)]
 
-# saved_model_cli show --dir saved_model\ --tag_set serve --signature_def input
-# save policy
-policy_saver = PolicySaver(agent.policy, batch_size=1, use_nest_path_signatures=False)
+    data = mljit_superpmi.collect_data(test_spmi_indices)
 
-print(f"[mljit] Saving model in '{saved_policy_path}'...")
-policy_saver.save(saved_policy_path)
-print(f"[mljit] Saved model in '{saved_policy_path}'!")
+    data_logs = flatten(map(lambda x: x.log, data))
+
+    sequence_examples = list(map(create_serialized_sequence_example, data_logs))
+
+    train(sequence_examples)
+
+    policy_saver = PolicySaver(agent.policy, batch_size=1, use_nest_path_signatures=False)
+
+    print(f"[mljit] Saving model in '{saved_policy_path}'...")
+    policy_saver.save(saved_policy_path)
+    print(f"[mljit] Saved model in '{saved_policy_path}'!")
