@@ -501,8 +501,10 @@ def train(sequence_examples):
 
         agent.train(experience)
 
+policy = agent.collect_policy # Use 'agent.policy' for execution/evaluation.
+
+policy_saver = PolicySaver(policy, batch_size=1, use_nest_path_signatures=False)
 def save_policy():
-    policy_saver = PolicySaver(agent.policy, batch_size=1, use_nest_path_signatures=False)
     print(f"[mljit] Saving model in '{saved_policy_path}'...")
     policy_saver.save(saved_policy_path)
     print(f"[mljit] Saved model in '{saved_policy_path}'!")
