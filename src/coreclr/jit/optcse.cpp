@@ -40,6 +40,105 @@ const size_t Compiler::s_optCSEhashSizeInitial  = EXPSET_SZ * 2;
 const size_t Compiler::s_optCSEhashGrowthFactor = 2;
 const size_t Compiler::s_optCSEhashBucketSize   = 4;
 
+#if DEBUG
+// Create it once.
+static MLJIT_CseCollectPolicy* policy = mljit_try_create_cse_collect_policy(getenv("DOTNET_MLJitSavedCollectPolicyPath"));
+
+void mljit_policy_set_cse_inputs(MLJIT_CseCollectPolicy* policy, Compiler* compiler, int minCseCost, CSEdsc* cse)
+{
+    const unsigned char costEx       = cse->csdTree->GetCostEx();
+    const double        deMinimis    = 1e-3;
+    const double        deMinimusAdj = -log(deMinimis);
+
+    const bool isLiveAcrossCall = cse->csdLiveAcrossCall;
+
+    const bool isConstant       = cse->csdTree->OperIsConst();
+    const bool isSharedConstant = cse->csdIsSharedConst;
+
+    const bool isMinCost = (costEx == minCseCost);
+    const bool isLowCost = (costEx <= minCseCost + 1);
+
+    // Is any CSE tree for this candidate marked GTF_MAKE_CSE (hoisting)
+    // Also gather data for "distance" metric.
+    //
+    const unsigned numBBs            = compiler->fgBBcount;
+    bool           isMakeCse         = false;
+    unsigned       minPostorderNum   = numBBs;
+    unsigned       maxPostorderNum   = 0;
+    BasicBlock*    minPostorderBlock = nullptr;
+    BasicBlock*    maxPostorderBlock = nullptr;
+    for (treeStmtLst* treeList = cse->csdTreeList; treeList != nullptr; treeList = treeList->tslNext)
+    {
+        BasicBlock* const treeBlock    = treeList->tslBlock;
+        unsigned          postorderNum = treeBlock->bbPostorderNum;
+        if (postorderNum < minPostorderNum)
+        {
+            minPostorderNum   = postorderNum;
+            minPostorderBlock = treeBlock;
+        }
+
+        if (postorderNum > maxPostorderNum)
+        {
+            maxPostorderNum   = postorderNum;
+            maxPostorderBlock = treeBlock;
+        }
+
+        isMakeCse |= ((treeList->tslTree->gtFlags & GTF_MAKE_CSE) != 0);
+    }
+    const unsigned blockSpread = maxPostorderNum - minPostorderNum;
+
+    const bool isContainable = cse->csdTree->OperIs(GT_ADD, GT_NOT, GT_MUL, GT_LSH);
+
+    // LSRA "is live across call"
+    //
+    bool isLiveAcrossCallLSRA = isLiveAcrossCall;
+    if (!isLiveAcrossCallLSRA)
+    {
+        unsigned count = 0;
+        for (BasicBlock* block                                                            = minPostorderBlock;
+             block != nullptr && block != maxPostorderBlock && count < blockSpread; block = block->Next(), count++)
+        {
+            if (block->HasFlag(BBF_HAS_CALL))
+            {
+                isLiveAcrossCallLSRA = true;
+                break;
+            }
+        }
+    }
+
+    policy->SetInput_cse_cost_ex(costEx);
+    policy->SetInput_cse_use_count_weighted_log(deMinimusAdj + log(max(deMinimis, cse->csdUseWtCnt)));
+    policy->SetInput_cse_def_count_weighted_log(deMinimusAdj + log(max(deMinimis, cse->csdDefWtCnt)));
+    policy->SetInput_cse_cost_sz(cse->csdTree->GetCostSz());
+    policy->SetInput_cse_use_count(cse->csdUseCount);
+    policy->SetInput_cse_def_count(cse->csdDefCount);
+    policy->SetInput_cse_is_live_across_call(isLiveAcrossCall);
+    policy->SetInput_cse_is_int(varTypeUsesIntReg(cse->csdTree->TypeGet()));
+    policy->SetInput_cse_is_constant_not_shared(isConstant & !isSharedConstant);
+    policy->SetInput_cse_is_shared_constant(isSharedConstant);
+    policy->SetInput_cse_cost_is_MIN_CSE_COST(isMinCost);
+    policy->SetInput_cse_is_constant_live_across_call(isConstant & isLiveAcrossCall);
+    policy->SetInput_cse_is_constant_min_cost(isConstant & isMinCost);
+    policy->SetInput_cse_cost_is_MIN_CSE_COST_live_across_call(isMinCost & isLiveAcrossCall);
+    policy->SetInput_cse_is_GTF_MAKE_CSE(isMakeCse);
+    policy->SetInput_cse_num_distinct_locals(cse->numDistinctLocals);
+    policy->SetInput_cse_num_local_occurrences(cse->numLocalOccurrences);
+    policy->SetInput_cse_has_call((cse->csdTree->gtFlags & GTF_CALL) != 0);
+    policy->SetInput_log_cse_use_count_weighted_times_cost_ex(deMinimusAdj +
+                                                              log(max(deMinimis, cse->csdUseCount * cse->csdUseWtCnt)));
+    policy->SetInput_log_cse_use_count_weighted_times_num_local_occurrences(
+        deMinimusAdj + log(max(deMinimis, cse->numLocalOccurrences * cse->csdUseWtCnt)));
+    policy->SetInput_cse_distance(/* booleanScale */ 5 * ((double)(blockSpread) / numBBs));
+    policy->SetInput_cse_is_containable(isContainable);
+    policy->SetInput_cse_is_cheap_containable(isContainable && isLowCost);
+    policy->SetInput_cse_is_live_across_call_in_LSRA_ordering(isLiveAcrossCallLSRA);
+    policy->SetInput_log_pressure_estimated_weight(0);
+    policy->SetInput_reward(0);
+    policy->SetInput_step_type(0);
+    policy->SetInput_discount(0);
+}
+#endif // DEBUG
+
 /*****************************************************************************
  *
  *  We've found all the candidates, build the index for easy access.
@@ -5119,6 +5218,16 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         {
             PerformCSE(&candidate);
             madeChanges = true;
+
+#ifdef DEBUG
+            if (policy)
+            {
+                mljit_policy_set_cse_inputs(policy, m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
+                policy->Action();
+                bool cseDecision = policy->GetOutput_cse_decision();
+                policy->LogAction();
+            }
+#endif // DEBUG
         }
     }
 }
@@ -5407,55 +5516,8 @@ bool Compiler::optConfigDisableCSE2()
 
 void Compiler::optOptimizeCSEs()
 {
-#ifdef DEBUG
-    // Create it once.
-    static auto session = mljit_try_create_cse_collect_policy(getenv("DOTNET_MLJitSavedCollectPolicyPath"));
-
-    if (session)
-    {
-        session->ResetLog();
-        // This is just a test to run the session 'x' times.
-        for (int i = 0; i < 1; i++)
-        {
-            session->SetInput_cse_cost_ex(0);
-            session->SetInput_cse_use_count_weighted_log(0);
-            session->SetInput_cse_def_count_weighted_log(0);
-            session->SetInput_cse_cost_sz(0);
-            session->SetInput_cse_use_count(0);
-            session->SetInput_cse_def_count(0);
-            session->SetInput_cse_is_live_across_call(0);
-            session->SetInput_cse_is_int(0);
-            session->SetInput_cse_is_constant_not_shared(0);
-            session->SetInput_cse_is_shared_constant(0);
-            session->SetInput_cse_cost_is_MIN_CSE_COST(0);
-            session->SetInput_cse_is_constant_live_across_call(0);
-            session->SetInput_cse_is_constant_min_cost(0);
-            session->SetInput_cse_cost_is_MIN_CSE_COST_live_across_call(0);
-            session->SetInput_cse_is_GTF_MAKE_CSE(0);
-            session->SetInput_cse_num_distinct_locals(0);
-            session->SetInput_cse_num_local_occurrences(0);
-            session->SetInput_cse_has_call(0);
-            session->SetInput_log_cse_use_count_weighted_times_cost_ex(0);
-            session->SetInput_log_cse_use_count_weighted_times_num_local_occurrences(0);
-            session->SetInput_cse_distance(0);
-            session->SetInput_cse_is_containable(0);
-            session->SetInput_cse_is_cheap_containable(0);
-            session->SetInput_cse_is_live_across_call_in_LSRA_ordering(0);
-            session->SetInput_log_pressure_estimated_weight(0);
-            session->SetInput_reward(0);
-            session->SetInput_step_type(0);
-            session->SetInput_discount(0);
-            session->Action();
-            bool cseDecision = session->GetOutput_cse_decision();
-            session->LogAction();
-        }
-        auto path = JitConfig.MLJitTrainLogFile();
-        if (path)
-        {
-            session->SaveLoggedActionsAsJson(path);
-        }
-        // mljit_destroy_policy(session);
-    }
+#if DEBUG
+    policy->ResetLog();
 #endif // DEBUG
 
     if (optCSEstart != BAD_VAR_NUM)
@@ -5470,6 +5532,14 @@ void Compiler::optOptimizeCSEs()
 
     INDEBUG(optEnsureClearCSEInfo());
     optOptimizeValnumCSEs();
+
+#if DEBUG
+    auto path = JitConfig.MLJitTrainLogFile();
+    if (path)
+    {
+        policy->SaveLoggedActionsAsJson(path);
+    }
+#endif // DEBUG
 }
 
 /*****************************************************************************

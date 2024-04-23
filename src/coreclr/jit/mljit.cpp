@@ -255,10 +255,10 @@ MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy(const char* savedPol
 
     AddScalarInput<float>(numInputs, input, inputValues, inputCount, graph,
                                                                                     "action_cse_cost_ex", TF_FLOAT);
-    AddScalarInput<int64_t>(numInputs, input, inputValues, inputCount, graph,
-                                                                                    "action_cse_use_count_weighted_log", TF_INT64);
-    AddScalarInput<int64_t>(numInputs, input, inputValues, inputCount, graph,
-                                                                                    "action_cse_def_count_weighted_log", TF_INT64);
+    AddScalarInput<double>(numInputs, input, inputValues, inputCount, graph,
+                                                                                    "action_cse_use_count_weighted_log", TF_DOUBLE);
+    AddScalarInput<double>(numInputs, input, inputValues, inputCount, graph,
+                                                                                    "action_cse_def_count_weighted_log", TF_DOUBLE);
     AddScalarInput<float>(numInputs, input, inputValues, inputCount, graph,
                                                                                     "action_cse_cost_sz", TF_FLOAT);
     AddScalarInput<int64_t>(numInputs, input, inputValues, inputCount, graph,
@@ -289,12 +289,12 @@ MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy(const char* savedPol
                                                                                     "action_cse_num_local_occurrences", TF_INT64);
     AddScalarInput<int64_t>(numInputs, input, inputValues, inputCount, graph,
                                                                                     "action_cse_has_call", TF_INT64);
-    AddScalarInput<int64_t>(numInputs, input, inputValues, inputCount, graph,
-                                                                                    "action_log_cse_use_count_weighted_times_cost_ex", TF_INT64);
-    AddScalarInput<int64_t>(numInputs, input, inputValues, inputCount, graph,
-                                                                                    "action_log_cse_use_count_weighted_times_num_local_occurrences", TF_INT64);
-    AddScalarInput<float>(numInputs, input, inputValues, inputCount, graph,
-                                                                                    "action_cse_distance", TF_FLOAT);
+    AddScalarInput<double>(numInputs, input, inputValues, inputCount, graph,
+                                                                                    "action_log_cse_use_count_weighted_times_cost_ex", TF_DOUBLE);
+    AddScalarInput<double>(numInputs, input, inputValues, inputCount, graph,
+                                                                                    "action_log_cse_use_count_weighted_times_num_local_occurrences", TF_DOUBLE);
+    AddScalarInput<double>(numInputs, input, inputValues, inputCount, graph,
+                                                                                    "action_cse_distance", TF_DOUBLE);
     AddScalarInput<int64_t>(numInputs, input, inputValues, inputCount, graph,
                                                                                     "action_cse_is_containable", TF_INT64);
     AddScalarInput<int64_t>(numInputs, input, inputValues, inputCount, graph,

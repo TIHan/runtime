@@ -73,7 +73,7 @@ class Method:
     perfScore: float
     numCse: int
     numCand: int
-    seq: str
+    seq: any
     spmi: int
     param: str
     likelihood: str
@@ -110,7 +110,7 @@ def create_superpmi_process(clrjit_dll_path, mch_path):
 
     p = subprocess.Popen(
         superpmi_args_joined,
-        stdin=PIPE, stdout=PIPE, stderr=PIPE, 
+        stdin=PIPE, stdout=PIPE, 
         text=True, 
         bufsize=1, 
         universal_newlines=True,
@@ -120,8 +120,8 @@ def create_superpmi_process(clrjit_dll_path, mch_path):
         while p.poll() is None:
             line = p.stdout.readline()
             # Uncomment below for debugging
-            # if line:
-            #     print(line)
+            if line:
+                print(line)
             if not line.startswith("[streaming]") and not line.isspace():
                 q.put(line)
 
@@ -154,14 +154,14 @@ def parse_mldump_line(line):
             float(perfScorePattern),
             int(numCsePattern),
             int(numCandPattern),
-            seqPattern,
+            list(map(lambda x: int(x), seqPattern.replace(' ', '').split(','))),
             int(spmiPattern),
             paramPattern,
             likelihoodPattern,
             baseLikelihoodPattern,
             featurePattern,
             float(codeSizePattern),
-            None
+            []
         )
 
 def parse_mldump(lines):
@@ -186,14 +186,17 @@ def parse_log_file(path):
         return data;
     except Exception as error:
         print(f'There was an error when parsing a log file from the JIT output:\n{error}')
-        return None
+        return []
 
 # --------------------------------------------------------------------------------
 
-def superpmi_jit(superpmi_process, spmi_index):
+def superpmi_jit(superpmi_process, spmi_index, cse_replay_seqs):
     (p, _, q, _) = superpmi_process
     log_file = os.path.join(log_path, f'_mljit_log_{p.pid}.json')
-    p.stdin.write(f'{spmi_index} !MLJitTrainLogFile={log_file}\n')
+    cse_replay_seqs_option = ''
+    if cse_replay_seqs:
+        cse_replay_seqs_option = f'!JitReplayCSE=\"{cse_replay_seqs}\"'.replace('[', '').replace(']', '')
+    p.stdin.write(f'{spmi_index} !MLJitTrainLogFile={log_file} {cse_replay_seqs_option}\n')
     try:
         line = q.get(timeout=60)
         meth = parse_mldump_line(line)
@@ -230,7 +233,7 @@ def superpmi_get_next_available_process(superpmi_processes):
 # --------------------------------------------------------------------------------
 
 # TODO: Add more inputs.
-def jit(spmi_index, superpmi_processes):
+def jit(spmi_index, cse_replay_seqs, superpmi_processes):
     p = None
 
     result = None
@@ -241,7 +244,7 @@ def jit(spmi_index, superpmi_processes):
         if s.acquire():
             l.clear()
             try:
-                result = superpmi_jit(p, spmi_index)
+                result = superpmi_jit(p, spmi_index, cse_replay_seqs)
             finally:
                 l.set()
                 s.release()
@@ -249,11 +252,11 @@ def jit(spmi_index, superpmi_processes):
     return result
 
 # --------------------------------------------------------------------------------
-def collect_data(spmi_indices):
+def collect_data(spmi_methods):
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=superpmi_process_count) as executor:
-        def create_jit_task(spmi_index):
-            return executor.submit(jit, spmi_index, superpmi_processes)
+        def create_jit_task(spmi_index, cse_replay_seqs):
+            return executor.submit(jit, spmi_index, cse_replay_seqs, superpmi_processes)
 
         superpmi_processes = create_many_superpmi_processes(clrjit_dll, corpus_file_path)
 
@@ -268,7 +271,7 @@ def collect_data(spmi_indices):
 
         time_stamp = now()
 
-        tasks = list(map(lambda i: create_jit_task(i), spmi_indices))
+        tasks = list(map(lambda x: create_jit_task(x[0], x[1]), spmi_methods))
 
         def eval(task):
             try:

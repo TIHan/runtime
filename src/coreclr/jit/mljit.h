@@ -12,8 +12,8 @@
 struct MLJIT_CseActionLogItem
 {
     float cse_cost_ex;
-    int64_t cse_use_count_weighted_log;
-    int64_t cse_def_count_weighted_log;
+    double cse_use_count_weighted_log;
+    double cse_def_count_weighted_log;
     int64_t cse_cost_sz;
     int64_t cse_use_count;
     int64_t cse_def_count;
@@ -29,9 +29,9 @@ struct MLJIT_CseActionLogItem
     int64_t cse_num_distinct_locals;
     int64_t cse_num_local_occurrences;
     int64_t cse_has_call;
-    int64_t log_cse_use_count_weighted_times_cost_ex;
-    int64_t log_cse_use_count_weighted_times_num_local_occurrences;
-    float cse_distance;
+    double log_cse_use_count_weighted_times_cost_ex;
+    double log_cse_use_count_weighted_times_num_local_occurrences;
+    double cse_distance;
     int64_t cse_is_containable;
     int64_t cse_is_cheap_containable;
     int64_t cse_is_live_across_call_in_LSRA_ordering;
@@ -97,8 +97,8 @@ public:
     MLJIT_CseActionLogItem loggedActions[256];
 
     MLJIT_SET_SCALAR_INPUT_API(cse_cost_ex, float, 0);
-    MLJIT_SET_SCALAR_INPUT_API(cse_use_count_weighted_log, int64_t, 1);
-    MLJIT_SET_SCALAR_INPUT_API(cse_def_count_weighted_log, int64_t, 2);
+    MLJIT_SET_SCALAR_INPUT_API(cse_use_count_weighted_log, double, 1);
+    MLJIT_SET_SCALAR_INPUT_API(cse_def_count_weighted_log, double, 2);
     MLJIT_SET_SCALAR_INPUT_API(cse_cost_sz, int64_t, 3);
     MLJIT_SET_SCALAR_INPUT_API(cse_use_count, int64_t, 4);
     MLJIT_SET_SCALAR_INPUT_API(cse_def_count, int64_t, 5);
@@ -114,9 +114,9 @@ public:
     MLJIT_SET_SCALAR_INPUT_API(cse_num_distinct_locals, int64_t, 15);
     MLJIT_SET_SCALAR_INPUT_API(cse_num_local_occurrences, int64_t, 16);
     MLJIT_SET_SCALAR_INPUT_API(cse_has_call, int64_t, 17);
-    MLJIT_SET_SCALAR_INPUT_API(log_cse_use_count_weighted_times_cost_ex, int64_t, 18);
-    MLJIT_SET_SCALAR_INPUT_API(log_cse_use_count_weighted_times_num_local_occurrences, int64_t, 19);
-    MLJIT_SET_SCALAR_INPUT_API(cse_distance, float, 20);
+    MLJIT_SET_SCALAR_INPUT_API(log_cse_use_count_weighted_times_cost_ex, double, 18);
+    MLJIT_SET_SCALAR_INPUT_API(log_cse_use_count_weighted_times_num_local_occurrences, double, 19);
+    MLJIT_SET_SCALAR_INPUT_API(cse_distance, double, 20);
     MLJIT_SET_SCALAR_INPUT_API(cse_is_containable, int64_t, 21);
     MLJIT_SET_SCALAR_INPUT_API(cse_is_cheap_containable, int64_t, 22);
     MLJIT_SET_SCALAR_INPUT_API(cse_is_live_across_call_in_LSRA_ordering, int64_t, 23);
@@ -186,8 +186,8 @@ public:
             fprintf(fptr, "{");
             auto l = &loggedActions[i];
             MLJIT_WRITE_JSON_PROPERTY_FLOAT(fptr, cse_cost_ex);
-            MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, cse_use_count_weighted_log);
-            MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, cse_def_count_weighted_log);
+            MLJIT_WRITE_JSON_PROPERTY_FLOAT(fptr, cse_use_count_weighted_log);
+            MLJIT_WRITE_JSON_PROPERTY_FLOAT(fptr, cse_def_count_weighted_log);
             MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, cse_cost_sz);
             MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, cse_use_count);
             MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, cse_def_count);
@@ -203,8 +203,8 @@ public:
             MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, cse_num_distinct_locals);
             MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, cse_num_local_occurrences);
             MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, cse_has_call);
-            MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, log_cse_use_count_weighted_times_cost_ex);
-            MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, log_cse_use_count_weighted_times_num_local_occurrences);
+            MLJIT_WRITE_JSON_PROPERTY_FLOAT(fptr, log_cse_use_count_weighted_times_cost_ex);
+            MLJIT_WRITE_JSON_PROPERTY_FLOAT(fptr, log_cse_use_count_weighted_times_num_local_occurrences);
             MLJIT_WRITE_JSON_PROPERTY_FLOAT(fptr, cse_distance);
             MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, cse_is_containable);
             MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, cse_is_cheap_containable);
