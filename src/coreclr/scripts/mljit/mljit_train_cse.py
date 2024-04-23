@@ -63,9 +63,9 @@ class ConstantValueNetwork(network.Network):
 observation_spec_and_preprocessing_layers = [
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_cost_ex'), 
         tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)),
-    (tf.TensorSpec(dtype=tf.float64, shape=(), name='cse_use_count_weighted_log'), 
+    (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_use_count_weighted_log'), 
         tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)),
-    (tf.TensorSpec(dtype=tf.float64, shape=(), name='cse_def_count_weighted_log'), 
+    (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_def_count_weighted_log'), 
         tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_cost_sz'), 
         tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)),
@@ -97,11 +97,11 @@ observation_spec_and_preprocessing_layers = [
         tf.keras.layers.Identity()),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_has_call', minimum=0, maximum=1), 
         tf.keras.layers.Identity()),
-    (tf.TensorSpec(dtype=tf.float64, shape=(), name='log_cse_use_count_weighted_times_cost_ex'), 
+    (tf.TensorSpec(dtype=tf.float32, shape=(), name='log_cse_use_count_weighted_times_cost_ex'), 
         tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)),
-    (tf.TensorSpec(dtype=tf.float64, shape=(), name='log_cse_use_count_weighted_times_num_local_occurrences'), 
+    (tf.TensorSpec(dtype=tf.float32, shape=(), name='log_cse_use_count_weighted_times_num_local_occurrences'), 
         tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)),
-    (tf.TensorSpec(dtype=tf.float64, shape=(), name='cse_distance'), 
+    (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_distance'), 
         tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)), # (max postorder num - min postorder num) / num BBs
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_containable', minimum=0, maximum=1), 
         tf.keras.layers.Identity()),
@@ -201,13 +201,13 @@ def create_sequence_example(data):
     ])
 
     many_cse_use_count_weighted_log = tf.train.FeatureList(feature=[
-        tf.train.Feature(float64_list=tf.train.Float64List(
-            value=[np.float64(data.cse_use_count_weighted_log)]))
+        tf.train.Feature(float_list=tf.train.FloatList(
+            value=[float(data.cse_use_count_weighted_log)]))
     ])
 
     many_cse_def_count_weighted_log = tf.train.FeatureList(feature=[
-        tf.train.Feature(float64_list=tf.train.Float64List(
-            value=[np.float64(data.cse_def_count_weighted_log)]))
+        tf.train.Feature(float_list=tf.train.FloatList(
+            value=[float(data.cse_def_count_weighted_log)]))
     ])
 
     many_cse_cost_sz = tf.train.FeatureList(feature=[
@@ -286,18 +286,18 @@ def create_sequence_example(data):
     ])
 
     many_log_cse_use_count_weighted_times_cost_ex = tf.train.FeatureList(feature=[
-        tf.train.Feature(float64_list=tf.train.Float64List(
-            value=[np.float64(data.log_cse_use_count_weighted_times_cost_ex)]))
+        tf.train.Feature(float_list=tf.train.FloatList(
+            value=[float(data.log_cse_use_count_weighted_times_cost_ex)]))
     ])
 
     many_log_cse_use_count_weighted_times_num_local_occurrences = tf.train.FeatureList(feature=[
-        tf.train.Feature(float64_list=tf.train.Float64List(
-            value=[np.float64(data.log_cse_use_count_weighted_times_num_local_occurrences)]))
+        tf.train.Feature(float_list=tf.train.FloatList(
+            value=[float(data.log_cse_use_count_weighted_times_num_local_occurrences)]))
     ])
 
     many_cse_distance = tf.train.FeatureList(feature=[
-        tf.train.Feature(float64_list=tf.train.Float64List(
-            value=[np.float64(data.cse_distance)]))
+        tf.train.Feature(float_list=tf.train.FloatList(
+            value=[float(data.cse_distance)]))
     ])
 
     many_cse_is_containable = tf.train.FeatureList(feature=[
@@ -517,5 +517,5 @@ test_num_runs = 1
 test_spmi_indices = [(37, []) for _ in range(1)]
 for _ in range(test_num_runs):
     sequence_examples = superpmi_collect_data(test_spmi_indices)
- #   train(agent, sequence_examples)
-  #  save_policy(collect_policy_saver, saved_collect_policy_path)
+    train(agent, sequence_examples)
+    save_policy(collect_policy_saver, saved_collect_policy_path)

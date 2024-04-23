@@ -41,9 +41,6 @@ const size_t Compiler::s_optCSEhashGrowthFactor = 2;
 const size_t Compiler::s_optCSEhashBucketSize   = 4;
 
 #if DEBUG
-// Create it once.
-static MLJIT_CseCollectPolicy* policy = mljit_try_create_cse_collect_policy(getenv("DOTNET_MLJitSavedCollectPolicyPath"));
-
 void mljit_policy_set_cse_inputs(MLJIT_CseCollectPolicy* policy, Compiler* compiler, int minCseCost, CSEdsc* cse)
 {
     const unsigned char costEx       = cse->csdTree->GetCostEx();
@@ -107,8 +104,8 @@ void mljit_policy_set_cse_inputs(MLJIT_CseCollectPolicy* policy, Compiler* compi
     }
 
     policy->SetInput_cse_cost_ex(costEx);
-    policy->SetInput_cse_use_count_weighted_log(deMinimusAdj + log(max(deMinimis, cse->csdUseWtCnt)));
-    policy->SetInput_cse_def_count_weighted_log(deMinimusAdj + log(max(deMinimis, cse->csdDefWtCnt)));
+    policy->SetInput_cse_use_count_weighted_log((float)(deMinimusAdj + log(max(deMinimis, cse->csdUseWtCnt))));
+    policy->SetInput_cse_def_count_weighted_log((float)(deMinimusAdj + log(max(deMinimis, cse->csdDefWtCnt))));
     policy->SetInput_cse_cost_sz(cse->csdTree->GetCostSz());
     policy->SetInput_cse_use_count(cse->csdUseCount);
     policy->SetInput_cse_def_count(cse->csdDefCount);
@@ -124,11 +121,11 @@ void mljit_policy_set_cse_inputs(MLJIT_CseCollectPolicy* policy, Compiler* compi
     policy->SetInput_cse_num_distinct_locals(cse->numDistinctLocals);
     policy->SetInput_cse_num_local_occurrences(cse->numLocalOccurrences);
     policy->SetInput_cse_has_call((cse->csdTree->gtFlags & GTF_CALL) != 0);
-    policy->SetInput_log_cse_use_count_weighted_times_cost_ex(deMinimusAdj +
-                                                              log(max(deMinimis, cse->csdUseCount * cse->csdUseWtCnt)));
+    policy->SetInput_log_cse_use_count_weighted_times_cost_ex((float)(deMinimusAdj +
+                                                              log(max(deMinimis, cse->csdUseCount * cse->csdUseWtCnt))));
     policy->SetInput_log_cse_use_count_weighted_times_num_local_occurrences(
-        deMinimusAdj + log(max(deMinimis, cse->numLocalOccurrences * cse->csdUseWtCnt)));
-    policy->SetInput_cse_distance(/* booleanScale */ 5 * ((double)(blockSpread) / numBBs));
+        (float)(deMinimusAdj + log(max(deMinimis, cse->numLocalOccurrences * cse->csdUseWtCnt))));
+    policy->SetInput_cse_distance((float)(/* booleanScale */ 5 * ((double)(blockSpread) / numBBs)));
     policy->SetInput_cse_is_containable(isContainable);
     policy->SetInput_cse_is_cheap_containable(isContainable && isLowCost);
     policy->SetInput_cse_is_live_across_call_in_LSRA_ordering(isLiveAcrossCallLSRA);
@@ -5130,6 +5127,11 @@ void CSE_Heuristic::AdjustHeuristic(CSE_Candidate* successfulCandidate)
     }
 }
 
+#ifdef DEBUG
+static MLJIT_CsePolicy*        currentPolicy        = nullptr;
+static MLJIT_CseCollectPolicy* currentCollectPolicy = nullptr;
+#endif // DEBUG
+
 //------------------------------------------------------------------------
 // ConsiderCandidates: examine candidates and perform CSEs.
 //
@@ -5220,12 +5222,12 @@ void CSE_HeuristicCommon::ConsiderCandidates()
             madeChanges = true;
 
 #ifdef DEBUG
-            if (policy)
+            if (currentCollectPolicy)
             {
-                mljit_policy_set_cse_inputs(policy, m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
-                policy->Action();
-                bool cseDecision = policy->GetOutput_cse_decision();
-                policy->LogAction();
+                mljit_policy_set_cse_inputs(currentCollectPolicy, m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
+                currentCollectPolicy->Action();
+                bool cseDecision = currentCollectPolicy->GetOutput_cse_decision();
+                currentCollectPolicy->LogAction();
             }
 #endif // DEBUG
         }
@@ -5517,7 +5519,21 @@ bool Compiler::optConfigDisableCSE2()
 void Compiler::optOptimizeCSEs()
 {
 #if DEBUG
-    policy->ResetLog();
+    // Create it once.
+    static MLJIT_CsePolicy* policy =
+        mljit_try_create_cse_policy(getenv("DOTNET_MLJitSavedPolicyPath"));
+    // Create it once.
+    static MLJIT_CseCollectPolicy* collectPolicy =
+        mljit_try_create_cse_collect_policy(getenv("DOTNET_MLJitSavedCollectPolicyPath"));
+
+    currentPolicy = policy;
+    currentCollectPolicy = collectPolicy;
+
+    if (policy)
+        policy->ResetLog();
+
+    if (collectPolicy)
+        collectPolicy->ResetLog();
 #endif // DEBUG
 
     if (optCSEstart != BAD_VAR_NUM)
@@ -5534,10 +5550,13 @@ void Compiler::optOptimizeCSEs()
     optOptimizeValnumCSEs();
 
 #if DEBUG
-    auto path = JitConfig.MLJitTrainLogFile();
-    if (path)
+    if (collectPolicy)
     {
-        policy->SaveLoggedActionsAsJson(path);
+        auto path = JitConfig.MLJitTrainLogFile();
+        if (path)
+        {
+            collectPolicy->SaveLoggedActionsAsJson(path);
+        }
     }
 #endif // DEBUG
 }

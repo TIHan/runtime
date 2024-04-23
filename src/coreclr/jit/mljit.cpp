@@ -51,6 +51,7 @@ void MLJIT_Policy::Action()
     else
     {
         printf("%s", TF_Message(status));
+        assert(!"Failed TF_SessionRun");
     }
 }
 
@@ -79,6 +80,7 @@ void AddTensorInput(int         numInputs,
     if (t.oper == NULL)
     {
         printf("ERROR: Failed TF_GraphOperationByName '%s'\n", name);
+        assert(!"Failed TF_GraphOperationByName");
     }
     else
     {
@@ -142,8 +144,9 @@ void AddTensorOutput(int         numOutputs,
 
     TF_Output t = {TF_GraphOperationByName(graph, name), index};
     if (t.oper == NULL)
-    {
+    {  
         printf("ERROR: Failed TF_GraphOperationByName '%s'\n", name);
+        assert(!"Failed TF_GraphOperationByName");
     }
     else
     {
@@ -180,6 +183,7 @@ void AddTensorOutput(int         numOutputs,
     else
     {
         printf("ERROR: Failed TF_NewTensor\n");
+        assert(!"Failed TF_NewTensor");
     }
 
     assert(outputCount < numOutputs);
@@ -220,45 +224,15 @@ void Add_CategoricalProjectionNetwork_logits_Output(
                            TF_FLOAT, 0, 2, 1, 2);
 }
 
-MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy(const char* savedPolicyDir)
+void mljit_add_cse_policy_inputs(
+    int numInputs, TF_Input* input, TF_Tensor** inputValues, int& inputCount, TF_Graph* graph)
 {
-    if (!savedPolicyDir)
-        return nullptr;
-
-    TF_Graph*          graph       = TF_NewGraph();
-    TF_Status*         status      = TF_NewStatus();
-    TF_SessionOptions* sessionOpts = TF_NewSessionOptions();
-
-    int         ntags = 1;
-    const char* tags  = "serve";
-
-    TF_Session* session =
-        TF_LoadSessionFromSavedModel(sessionOpts, NULL, savedPolicyDir, &tags, ntags, graph, NULL, status);
-
-    if (TF_GetCode(status) == TF_OK)
-    {
-#ifdef PRINT_MLJIT_LOG
-        printf("TF_LoadSessionFromSavedModel OK\n");
-#endif
-    }
-    else
-    {
-        printf("%s", TF_Message(status));
-    }
-
-    //****** Get input tensors
-    int         numInputs   = 28;
-    TF_Input*   input       = (TF_Input*)malloc(sizeof(TF_Input) * numInputs);
-    TF_Tensor** inputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*) * numInputs);
-
-    int inputCount = 0;
-
     AddScalarInput<float>(numInputs, input, inputValues, inputCount, graph,
                                                                                     "action_cse_cost_ex", TF_FLOAT);
-    AddScalarInput<double>(numInputs, input, inputValues, inputCount, graph,
-                                                                                    "action_cse_use_count_weighted_log", TF_DOUBLE);
-    AddScalarInput<double>(numInputs, input, inputValues, inputCount, graph,
-                                                                                    "action_cse_def_count_weighted_log", TF_DOUBLE);
+    AddScalarInput<float>(numInputs, input, inputValues, inputCount, graph,
+                                                                                    "action_cse_use_count_weighted_log", TF_FLOAT);
+    AddScalarInput<float>(numInputs, input, inputValues, inputCount, graph,
+                                                                                    "action_cse_def_count_weighted_log", TF_FLOAT);
     AddScalarInput<float>(numInputs, input, inputValues, inputCount, graph,
                                                                                     "action_cse_cost_sz", TF_FLOAT);
     AddScalarInput<int64_t>(numInputs, input, inputValues, inputCount, graph,
@@ -289,12 +263,12 @@ MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy(const char* savedPol
                                                                                     "action_cse_num_local_occurrences", TF_INT64);
     AddScalarInput<int64_t>(numInputs, input, inputValues, inputCount, graph,
                                                                                     "action_cse_has_call", TF_INT64);
-    AddScalarInput<double>(numInputs, input, inputValues, inputCount, graph,
-                                                                                    "action_log_cse_use_count_weighted_times_cost_ex", TF_DOUBLE);
-    AddScalarInput<double>(numInputs, input, inputValues, inputCount, graph,
-                                                                                    "action_log_cse_use_count_weighted_times_num_local_occurrences", TF_DOUBLE);
-    AddScalarInput<double>(numInputs, input, inputValues, inputCount, graph,
-                                                                                    "action_cse_distance", TF_DOUBLE);
+    AddScalarInput<float>(numInputs, input, inputValues, inputCount, graph,
+                                                                                    "action_log_cse_use_count_weighted_times_cost_ex", TF_FLOAT);
+    AddScalarInput<float>(numInputs, input, inputValues, inputCount, graph,
+                                                                                    "action_log_cse_use_count_weighted_times_num_local_occurrences", TF_FLOAT);
+    AddScalarInput<float>(numInputs, input, inputValues, inputCount, graph,
+                                                                                    "action_cse_distance", TF_FLOAT);
     AddScalarInput<int64_t>(numInputs, input, inputValues, inputCount, graph,
                                                                                     "action_cse_is_containable", TF_INT64);
     AddScalarInput<int64_t>(numInputs, input, inputValues, inputCount, graph,
@@ -309,6 +283,109 @@ MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy(const char* savedPol
                                                                                     "action_step_type", TF_INT32);
     AddScalarInput<float>(numInputs, input, inputValues, inputCount, graph,
                                                                                     "action_discount", TF_FLOAT);
+}
+
+MLJIT_CsePolicy* mljit_try_create_cse_policy(const char* savedPolicyDir)
+{
+    if (!savedPolicyDir)
+        return nullptr;
+
+    TF_Graph*          graph       = TF_NewGraph();
+    TF_Status*         status      = TF_NewStatus();
+    TF_SessionOptions* sessionOpts = TF_NewSessionOptions();
+
+    int         ntags = 1;
+    const char* tags  = "serve";
+
+    TF_Session* session =
+        TF_LoadSessionFromSavedModel(sessionOpts, NULL, savedPolicyDir, &tags, ntags, graph, NULL, status);
+
+    if (TF_GetCode(status) == TF_OK)
+    {
+#ifdef PRINT_MLJIT_LOG
+        printf("TF_LoadSessionFromSavedModel OK\n");
+#endif
+    }
+    else
+    {
+        printf("%s", TF_Message(status));
+        assert(!"Failed TF_LoadSessionFromSavedModel");
+    }
+
+    //****** Get input tensors
+    int         numInputs   = 28;
+    TF_Input*   input       = (TF_Input*)malloc(sizeof(TF_Input) * numInputs);
+    TF_Tensor** inputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*) * numInputs);
+
+    int inputCount = 0;
+
+    mljit_add_cse_policy_inputs(numInputs, input, inputValues, inputCount, graph);
+
+    assert(numInputs == inputCount);
+
+    //********* Get Output tensors
+    int         numOutputs   = 1;
+    TF_Output*  output       = (TF_Output*)malloc(sizeof(TF_Output) * numOutputs);
+    TF_Tensor** outputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*) * numOutputs);
+
+    int outputCount = 0;
+
+    // This is the "cse_decision".
+    AddScalarOutput<int64_t>(numOutputs, output, outputValues, outputCount, graph, "StatefulPartitionedCall", TF_INT64,
+                             0);
+
+    assert(numOutputs == outputCount);
+
+    //********* MLJIT_Policy
+    auto policy          = new MLJIT_CsePolicy();
+    policy->graph        = graph;
+    policy->status       = status;
+    policy->sessionOpts  = sessionOpts;
+    policy->session      = session;
+    policy->numInputs    = numInputs;
+    policy->input        = input;
+    policy->inputValues  = inputValues;
+    policy->numOutputs   = numOutputs;
+    policy->output       = output;
+    policy->outputValues = outputValues;
+    return policy;
+}
+
+MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy(const char* savedPolicyDir)
+{
+    if (!savedPolicyDir)
+        return nullptr;
+
+    TF_Graph*          graph       = TF_NewGraph();
+    TF_Status*         status      = TF_NewStatus();
+    TF_SessionOptions* sessionOpts = TF_NewSessionOptions();
+
+    int         ntags = 1;
+    const char* tags  = "serve";
+
+    TF_Session* session =
+        TF_LoadSessionFromSavedModel(sessionOpts, NULL, savedPolicyDir, &tags, ntags, graph, NULL, status);
+
+    if (TF_GetCode(status) == TF_OK)
+    {
+#ifdef PRINT_MLJIT_LOG
+        printf("TF_LoadSessionFromSavedModel OK\n");
+#endif
+    }
+    else
+    {
+        printf("%s", TF_Message(status));
+        assert(!"Failed TF_LoadSessionFromSavedModel");
+    }
+
+    //****** Get input tensors
+    int         numInputs   = 28;
+    TF_Input*   input       = (TF_Input*)malloc(sizeof(TF_Input) * numInputs);
+    TF_Tensor** inputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*) * numInputs);
+
+    int inputCount = 0;
+
+    mljit_add_cse_policy_inputs(numInputs, input, inputValues, inputCount, graph);
 
     assert(numInputs == inputCount);
 
@@ -371,6 +448,7 @@ void mljit_destroy_policy(MLJIT_Policy* policy)
         else
         {
             printf("%s", TF_Message(status));
+            assert(!"Failed TF_DeleteTensor");
         }
     }
 
@@ -386,6 +464,7 @@ void mljit_destroy_policy(MLJIT_Policy* policy)
         else
         {
             printf("%s", TF_Message(status));
+            assert(!"Failed TF_DeleteTensor");
         }
     }
 
@@ -400,6 +479,7 @@ void mljit_destroy_policy(MLJIT_Policy* policy)
     else
     {
         printf("%s", TF_Message(status));
+        assert(!"Failed TF_CloseSession");
     }
 
     // Delete the session.
@@ -413,6 +493,7 @@ void mljit_destroy_policy(MLJIT_Policy* policy)
     else
     {
         printf("%s", TF_Message(status));
+        assert(!"Failed TF_DeleteSession");
     }
 
     // Delete the session options.
@@ -426,6 +507,7 @@ void mljit_destroy_policy(MLJIT_Policy* policy)
     else
     {
         printf("%s", TF_Message(status));
+        assert(!"Failed TF_DeleteSessionOptions");
     }
 
     // Delete the graph.
@@ -439,6 +521,7 @@ void mljit_destroy_policy(MLJIT_Policy* policy)
     else
     {
         printf("%s", TF_Message(status));
+        assert(!"Failed TF_Message");
     }
 
     // Delete the status.

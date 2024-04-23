@@ -12,8 +12,8 @@
 struct MLJIT_CseActionLogItem
 {
     float cse_cost_ex;
-    double cse_use_count_weighted_log;
-    double cse_def_count_weighted_log;
+    float cse_use_count_weighted_log;
+    float cse_def_count_weighted_log;
     int64_t cse_cost_sz;
     int64_t cse_use_count;
     int64_t cse_def_count;
@@ -29,9 +29,9 @@ struct MLJIT_CseActionLogItem
     int64_t cse_num_distinct_locals;
     int64_t cse_num_local_occurrences;
     int64_t cse_has_call;
-    double log_cse_use_count_weighted_times_cost_ex;
-    double log_cse_use_count_weighted_times_num_local_occurrences;
-    double cse_distance;
+    float log_cse_use_count_weighted_times_cost_ex;
+    float log_cse_use_count_weighted_times_num_local_occurrences;
+    float cse_distance;
     int64_t cse_is_containable;
     int64_t cse_is_cheap_containable;
     int64_t cse_is_live_across_call_in_LSRA_ordering;
@@ -90,15 +90,15 @@ public:
 #define MLJIT_WRITE_JSON_PROPERTY_FLOAT_NO_COMMA(FPTR, NAME) \
     fprintf(FPTR, "\"" #NAME "\": %f", l->##NAME); \
 
-class MLJIT_CseCollectPolicy : public MLJIT_Policy
+class MLJIT_CsePolicyBase : public MLJIT_Policy
 {
 public:
     int                    loggedActionCount = 0;
     MLJIT_CseActionLogItem loggedActions[256];
 
     MLJIT_SET_SCALAR_INPUT_API(cse_cost_ex, float, 0);
-    MLJIT_SET_SCALAR_INPUT_API(cse_use_count_weighted_log, double, 1);
-    MLJIT_SET_SCALAR_INPUT_API(cse_def_count_weighted_log, double, 2);
+    MLJIT_SET_SCALAR_INPUT_API(cse_use_count_weighted_log, float, 1);
+    MLJIT_SET_SCALAR_INPUT_API(cse_def_count_weighted_log, float, 2);
     MLJIT_SET_SCALAR_INPUT_API(cse_cost_sz, int64_t, 3);
     MLJIT_SET_SCALAR_INPUT_API(cse_use_count, int64_t, 4);
     MLJIT_SET_SCALAR_INPUT_API(cse_def_count, int64_t, 5);
@@ -114,9 +114,9 @@ public:
     MLJIT_SET_SCALAR_INPUT_API(cse_num_distinct_locals, int64_t, 15);
     MLJIT_SET_SCALAR_INPUT_API(cse_num_local_occurrences, int64_t, 16);
     MLJIT_SET_SCALAR_INPUT_API(cse_has_call, int64_t, 17);
-    MLJIT_SET_SCALAR_INPUT_API(log_cse_use_count_weighted_times_cost_ex, double, 18);
-    MLJIT_SET_SCALAR_INPUT_API(log_cse_use_count_weighted_times_num_local_occurrences, double, 19);
-    MLJIT_SET_SCALAR_INPUT_API(cse_distance, double, 20);
+    MLJIT_SET_SCALAR_INPUT_API(log_cse_use_count_weighted_times_cost_ex, float, 18);
+    MLJIT_SET_SCALAR_INPUT_API(log_cse_use_count_weighted_times_num_local_occurrences, float, 19);
+    MLJIT_SET_SCALAR_INPUT_API(cse_distance, float, 20);
     MLJIT_SET_SCALAR_INPUT_API(cse_is_containable, int64_t, 21);
     MLJIT_SET_SCALAR_INPUT_API(cse_is_cheap_containable, int64_t, 22);
     MLJIT_SET_SCALAR_INPUT_API(cse_is_live_across_call_in_LSRA_ordering, int64_t, 23);
@@ -125,13 +125,7 @@ public:
     MLJIT_SET_SCALAR_INPUT_API(step_type, int, 26);
     MLJIT_SET_SCALAR_INPUT_API(discount, float, 27);
 
-    int64_t GetOutput_cse_decision()
-    {
-        int index = 1; // "0" - policy, "1" - collect_policy
-        assert(strcmp(TF_OperationName(output[index].oper), "StatefulPartitionedCall") == 0);
-        int64_t* data = reinterpret_cast<int64_t*>(TF_TensorData(outputValues[index]));
-        return data[0];
-    }
+    virtual int64_t GetOutput_cse_decision() = 0;
 
     void ResetLog()
     {
@@ -218,14 +212,38 @@ public:
                 fprintf(fptr, ",");
             }
         }
-   
+
         fprintf(fptr, "]\n");
         fclose(fptr);
     }
 };
 
-MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy(const char* savedPolicyDir);
+class MLJIT_CsePolicy : public MLJIT_CsePolicyBase
+{
+public:
+    int64_t GetOutput_cse_decision() override
+    {
+        int index = 0; // "0" - policy, "1" - collect_policy
+        assert(strcmp(TF_OperationName(output[index].oper), "StatefulPartitionedCall") == 0);
+        int64_t* data = reinterpret_cast<int64_t*>(TF_TensorData(outputValues[index]));
+        return data[0];
+    }
+};
 
+class MLJIT_CseCollectPolicy : public MLJIT_CsePolicyBase
+{
+public:
+    int64_t GetOutput_cse_decision() override
+    {
+        int index = 1; // "0" - policy, "1" - collect_policy
+        assert(strcmp(TF_OperationName(output[index].oper), "StatefulPartitionedCall") == 0);
+        int64_t* data = reinterpret_cast<int64_t*>(TF_TensorData(outputValues[index]));
+        return data[0];
+    }
+};
+
+MLJIT_CsePolicy* mljit_try_create_cse_policy(const char* savedPolicyDir);
+MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy(const char* savedPolicyDir);
 void mljit_destroy_policy(MLJIT_Policy* mljitSession);
 
 #endif // DEBUG
