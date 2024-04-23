@@ -21,7 +21,6 @@ from subprocess import PIPE
 core_root         = os.environ['CORE_ROOT']
 log_path          = os.environ['DOTNET_MLJitLogPath']
 corpus_file_path  = os.environ['DOTNET_MLJitCorpusFile']
-saved_policy_path = os.environ['DOTNET_MLJitSavedPolicyPath']
 superpmi_exe      = os.path.join(core_root, 'superpmi.exe') # TODO: Only works on windows, fix it for other OSes
 clrjit_dll        = os.path.join(core_root, 'clrjit.dll') # TODO: Only works on windows, fix it for other OSes
 
@@ -95,7 +94,8 @@ def create_superpmi_process(clrjit_dll_path, mch_path):
     # Any errors will still be printed though.
     superpmi_env['TF_ENABLE_ONEDNN_OPTS'] = "0"
     superpmi_env['TF_CPP_MIN_LOG_LEVEL'] = "3"
-    superpmi_env['DOTNET_MLJitSavedPolicyPath'] = saved_policy_path
+    superpmi_env['DOTNET_MLJitSavedPolicyPath'] = os.environ['DOTNET_MLJitSavedPolicyPath']
+    superpmi_env['DOTNET_MLJitSavedCollectPolicyPath'] = os.environ['DOTNET_MLJitSavedCollectPolicyPath']
 
     superpmi_args = [
             superpmi_exe, 

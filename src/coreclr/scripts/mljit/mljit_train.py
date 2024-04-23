@@ -25,6 +25,7 @@ from absl import logging
 # Use 'saved_model_cli show --dir saved_policy\ --tag_set serve --signature_def action' from the command line to see the inputs/outputs of the policy.
 
 saved_policy_path = os.environ['DOTNET_MLJitSavedPolicyPath']
+saved_collect_policy_path = os.environ['DOTNET_MLJitSavedCollectPolicyPath']
 
 def flatten(xss):
     return [x for xs in xss for x in xs]
@@ -131,79 +132,64 @@ action_spec = tensor_spec.BoundedTensorSpec(
 
 preprocessing_combiner = tf.keras.layers.Add()
 
-actor_network = actor_distribution_network.ActorDistributionNetwork(
-    input_tensor_spec=time_step_spec.observation,
-    output_tensor_spec=action_spec,
-    preprocessing_layers=preprocessing_layers,
-    preprocessing_combiner=preprocessing_combiner,
-    
-    # Settings below match MLGO, most of the settings are actually the default values of ActorDistributionNetwork.
-    fc_layer_params=(40, 40, 20),
-    dropout_layer_params=None,
-    activation_fn=tf.keras.activations.relu)
+def create_agent():
+    actor_network = actor_distribution_network.ActorDistributionNetwork(
+        input_tensor_spec=time_step_spec.observation,
+        output_tensor_spec=action_spec,
+        preprocessing_layers=preprocessing_layers,
+        preprocessing_combiner=preprocessing_combiner,
+        
+        # Settings below match MLGO, most of the settings are actually the default values of ActorDistributionNetwork.
+        fc_layer_params=(40, 40, 20),
+        dropout_layer_params=None,
+        activation_fn=tf.keras.activations.relu)
 
-# value_network = value_network.ValueNetwork(
-#   time_step_spec.observation,
-#   preprocessing_layers=preprocessing_layers,
-#   preprocessing_combiner=preprocessing_combiner)
+    # value_network = value_network.ValueNetwork(
+    #   time_step_spec.observation,
+    #   preprocessing_layers=preprocessing_layers,
+    #   preprocessing_combiner=preprocessing_combiner)
 
-value_network = ConstantValueNetwork(time_step_spec.observation)
+    value_network = ConstantValueNetwork(time_step_spec.observation)
 
-agent = ppo_agent.PPOAgent(
-    time_step_spec=time_step_spec,
-    action_spec=action_spec,
-    actor_net=actor_network,
-    value_net=value_network,
+    agent = ppo_agent.PPOAgent(
+        time_step_spec=time_step_spec,
+        action_spec=action_spec,
+        actor_net=actor_network,
+        value_net=value_network,
 
-    # Settings below match MLGO, most of the settings are actually the default values of PPOAgent.
-    optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
-    importance_ratio_clipping=0.2,
-    lambda_value=0.0,
-    discount_factor=0.0,
-    entropy_regularization=0.003,
-    policy_l2_reg=0.000001,
-    value_function_l2_reg=0.0,
-    shared_vars_l2_reg=0.0,
-    value_pred_loss_coef=0.0,
-    num_epochs=1,
-    use_gae=False,
-    use_td_lambda_return=False,
-    normalize_rewards=False,
-    reward_norm_clipping=10.0,
-    normalize_observations=False,
-    log_prob_clipping=0.0,
-    kl_cutoff_factor=2.0,
-    kl_cutoff_coef=1000.0,
-    initial_adaptive_kl_beta=1.0,
-    adaptive_kl_target=0.01,
-    adaptive_kl_tolerance=0.3,
-    gradient_clipping=None,
-    value_clipping=None,
-    check_numerics=False,
-    compute_value_and_advantage_in_train=True,
-    update_normalizers_in_train=True,
-    debug_summaries=True,
-    summarize_grads_and_vars=True)
+        # Settings below match MLGO, most of the settings are actually the default values of PPOAgent.
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
+        importance_ratio_clipping=0.2,
+        lambda_value=0.0,
+        discount_factor=0.0,
+        entropy_regularization=0.003,
+        policy_l2_reg=0.000001,
+        value_function_l2_reg=0.0,
+        shared_vars_l2_reg=0.0,
+        value_pred_loss_coef=0.0,
+        num_epochs=1,
+        use_gae=False,
+        use_td_lambda_return=False,
+        normalize_rewards=False,
+        reward_norm_clipping=10.0,
+        normalize_observations=False,
+        log_prob_clipping=0.0,
+        kl_cutoff_factor=2.0,
+        kl_cutoff_coef=1000.0,
+        initial_adaptive_kl_beta=1.0,
+        adaptive_kl_target=0.01,
+        adaptive_kl_tolerance=0.3,
+        gradient_clipping=None,
+        value_clipping=None,
+        check_numerics=False,
+        compute_value_and_advantage_in_train=True,
+        update_normalizers_in_train=True,
+        debug_summaries=True,
+        summarize_grads_and_vars=True)
 
-agent.initialize()
-agent.train = common_utils.function(agent.train) # Apparently, it makes 'train' faster? Who knows why...
-
-
-# ---------------------------------------
-
-def step_action(step_type: int, reward: float, discount: float, observation: list):
-    return agent.collect_policy.action(time_step.TimeStep(
-        step_type=tf.constant(step_type, dtype=tf.int32),
-        reward=tf.constant(reward, dtype=tf.float32),
-        discount=tf.constant(discount, dtype=tf.float32),
-        observation=observation
-    ))
-
-# TODO: not working
-# action_step = step_action(0, 0.0, 0.0, [
-#    tf.constant(0.0, dtype=tf.float32, name='cse_cost_ex'),
-#    tf.constant(0, dtype=tf.int64, name='cse_use_count_weighted_log')
-# ])
+    agent.initialize()
+    agent.train = common_utils.function(agent.train) # Apparently, it makes 'train' faster? Who knows why...
+    return agent
 
 # ---------------------------------------
 
@@ -485,7 +471,7 @@ def create_dataset_iter(sequence_examples):
     return iter(compute_dataset(sequence_examples).repeat().prefetch(tf.data.AUTOTUNE))
 
 # Majority of this is from MLGO.
-def train(sequence_examples):
+def train(agent, sequence_examples):
     dataset_iter = create_dataset_iter(sequence_examples)
     for _ in range(num_iterations):
         # When the data is not enough to fill in a batch, next(dataset_iter)
@@ -501,27 +487,35 @@ def train(sequence_examples):
 
         agent.train(experience)
 
-policy = agent.collect_policy # Use 'agent.policy' for execution/evaluation.
+def create_collect_policy_saver(agent):
+    return PolicySaver(agent.collect_policy, batch_size=1, use_nest_path_signatures=False)
 
-policy_saver = PolicySaver(policy, batch_size=1, use_nest_path_signatures=False)
-def save_policy():
-    print(f"[mljit] Saving model in '{saved_policy_path}'...")
-    policy_saver.save(saved_policy_path)
-    print(f"[mljit] Saved model in '{saved_policy_path}'!")
+def create_policy_saver(agent):
+    return PolicySaver(agent.policy, batch_size=1, use_nest_path_signatures=False)
 
-def collect_data(spmi_indices):
+def save_policy(policy_saver, path):
+    print(f"[mljit] Saving policy in '{path}'...")
+    policy_saver.save(path)
+    print(f"[mljit] Saved policy in '{path}'!")
+
+def superpmi_collect_data(spmi_indices):
     data = mljit_superpmi.collect_data(spmi_indices)
     data_logs = flatten(map(lambda x: x.log, data))
     return list(map(create_serialized_sequence_example, data_logs))
 
 # ---------------------------------------
 
+agent = create_agent()
+policy_saver = create_policy_saver(agent)
+collect_policy_saver = create_collect_policy_saver(agent)
+
 # Save initial policy.
-save_policy()
+save_policy(policy_saver, saved_policy_path)
+save_policy(collect_policy_saver, saved_collect_policy_path)
 
 test_num_runs = 2
 test_spmi_indices = [37 for _ in range(5000)]
 for _ in range(test_num_runs):
-    sequence_examples = collect_data(test_spmi_indices)
-    train(sequence_examples)
-    save_policy()
+    sequence_examples = superpmi_collect_data(test_spmi_indices)
+    train(agent, sequence_examples)
+    save_policy(collect_policy_saver, saved_collect_policy_path)

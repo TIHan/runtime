@@ -5409,7 +5409,7 @@ void Compiler::optOptimizeCSEs()
 {
 #ifdef DEBUG
     // Create it once.
-    static auto session = mljit_session_try_create_cse(getenv("DOTNET_MLJitSavedPolicyPath"));
+    static auto session = mljit_try_create_cse_collect_policy(getenv("DOTNET_MLJitSavedCollectPolicyPath"));
 
     if (session)
     {
@@ -5454,7 +5454,7 @@ void Compiler::optOptimizeCSEs()
         {
             session->SaveLoggedActionsAsJson(path);
         }
-        // mljit_session_destroy(session);
+        // mljit_destroy_policy(session);
     }
 #endif // DEBUG
 

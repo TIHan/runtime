@@ -9,7 +9,7 @@
 #include "tensorflow\c\c_api.h"
 #include "compiler.h"
 
-struct MLJIT_Log_CSE
+struct MLJIT_CseActionLogItem
 {
     float cse_cost_ex;
     int64_t cse_use_count_weighted_log;
@@ -40,10 +40,10 @@ struct MLJIT_Log_CSE
     float   reward;
 };
 
-class MLJIT_Session
+class MLJIT_Policy
 {
 public:
-    MLJIT_Session();
+    MLJIT_Policy();
 
     void Action();
 
@@ -90,11 +90,11 @@ public:
 #define MLJIT_WRITE_JSON_PROPERTY_FLOAT_NO_COMMA(FPTR, NAME) \
     fprintf(FPTR, "\"" #NAME "\": %f", l->##NAME); \
 
-class MLJIT_Session_CSE : public MLJIT_Session
+class MLJIT_CseCollectPolicy : public MLJIT_Policy
 {
 public:
-    int           loggedActionCount = 0;
-    MLJIT_Log_CSE loggedActions[256];
+    int                    loggedActionCount = 0;
+    MLJIT_CseActionLogItem loggedActions[256];
 
     MLJIT_SET_SCALAR_INPUT_API(cse_cost_ex, float, 0);
     MLJIT_SET_SCALAR_INPUT_API(cse_use_count_weighted_log, int64_t, 1);
@@ -127,8 +127,9 @@ public:
 
     int64_t GetOutput_cse_decision()
     {
-        assert(strcmp(TF_OperationName(output[0].oper), "StatefulPartitionedCall") == 0);
-        int64_t* data = reinterpret_cast<int64_t*>(TF_TensorData(outputValues[0]));
+        int index = 1; // "0" - policy, "1" - collect_policy
+        assert(strcmp(TF_OperationName(output[index].oper), "StatefulPartitionedCall") == 0);
+        int64_t* data = reinterpret_cast<int64_t*>(TF_TensorData(outputValues[index]));
         return data[0];
     }
 
@@ -139,7 +140,7 @@ public:
 
     void LogAction()
     {
-        MLJIT_Log_CSE l = {};
+        MLJIT_CseActionLogItem l = {};
         MLJIT_RECORD_INPUT(cse_cost_ex);
         MLJIT_RECORD_INPUT(cse_use_count_weighted_log);
         MLJIT_RECORD_INPUT(cse_def_count_weighted_log);
@@ -223,9 +224,9 @@ public:
     }
 };
 
-MLJIT_Session_CSE* mljit_session_try_create_cse(const char* savedPolicyDir);
+MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy(const char* savedPolicyDir);
 
-void mljit_session_destroy(MLJIT_Session* mljitSession);
+void mljit_destroy_policy(MLJIT_Policy* mljitSession);
 
 #endif // DEBUG
 

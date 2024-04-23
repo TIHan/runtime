@@ -22,8 +22,36 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 // #define PRINT_MLJIT_LOG
 
-MLJIT_Session::MLJIT_Session()
+MLJIT_Policy::MLJIT_Policy()
 {
+}
+
+void MLJIT_Policy::Action()
+{
+    auto status  = this->status;
+    auto session = this->session;
+
+    auto numInputs   = this->numInputs;
+    auto input       = this->input;
+    auto inputValues = this->inputValues;
+
+    auto numOutputs   = this->numOutputs;
+    auto output       = this->output;
+    auto outputValues = this->outputValues;
+
+    TF_SessionRun(session, nullptr, (TF_Output*)&input[0], &inputValues[0], numInputs, &output[0], &outputValues[0],
+                  numOutputs, nullptr, 0, nullptr, status);
+
+    if (TF_GetCode(status) == TF_OK)
+    {
+#ifdef PRINT_MLJIT_LOG
+        printf("TF_SessionRun OK\n");
+#endif
+    }
+    else
+    {
+        printf("%s", TF_Message(status));
+    }
 }
 
 void TensorBufferDeallocator(void* data, size_t a, void* b)
@@ -32,16 +60,16 @@ void TensorBufferDeallocator(void* data, size_t a, void* b)
 }
 
 template <typename T>
-T* AddTensorInput(int         numInputs,
-                  TF_Input*   input,
-                  TF_Tensor** inputValues,
-                  int&        inputCount,
-                  TF_Graph*   graph,
-                  const char* name,
-                  TF_DataType dtype,
-                  int         dimsNum,
-                  int64_t     dim0,
-                  int64_t     dim1)
+void AddTensorInput(int         numInputs,
+                    TF_Input*   input,
+                    TF_Tensor** inputValues,
+                    int&        inputCount,
+                    TF_Graph*   graph,
+                    const char* name,
+                    TF_DataType dtype,
+                    int         dimsNum,
+                    int64_t     dim0,
+                    int64_t     dim1)
 {
     assert(dimsNum <= 2 && dimsNum > 0);
     assert(dim0 > 0);
@@ -93,22 +121,20 @@ T* AddTensorInput(int         numInputs,
     input[inputCount]       = t;
     inputValues[inputCount] = tensor;
     inputCount++;
-
-    return data;
 };
 
 template <typename T>
-T* AddTensorOutput(int         numOutputs,
-                   TF_Output*  output,
-                   TF_Tensor** outputValues,
-                   int&        outputCount,
-                   TF_Graph*   graph,
-                   const char* name,
-                   TF_DataType dtype,
-                   int         index,
-                   int         dimsNum,
-                   int64_t     dim0,
-                   int64_t     dim1)
+void AddTensorOutput(int         numOutputs,
+                     TF_Output*  output,
+                     TF_Tensor** outputValues,
+                     int&        outputCount,
+                     TF_Graph*   graph,
+                     const char* name,
+                     TF_DataType dtype,
+                     int         index,
+                     int         dimsNum,
+                     int64_t     dim0,
+                     int64_t     dim1)
 {
     assert(dimsNum <= 2 && dimsNum > 0);
     assert(dim0 > 0);
@@ -160,36 +186,41 @@ T* AddTensorOutput(int         numOutputs,
     output[outputCount]       = t;
     outputValues[outputCount] = tensor;
     outputCount++;
-
-    return data;
 };
 
 template <typename T>
-T* AddScalarInput(int         numInputs,
-                  TF_Input*   input,
-                  TF_Tensor** inputValues,
-                  int&        inputCount,
-                  TF_Graph*   graph,
-                  const char* name,
-                  TF_DataType dtype)
+void AddScalarInput(int         numInputs,
+                    TF_Input*   input,
+                    TF_Tensor** inputValues,
+                    int&        inputCount,
+                    TF_Graph*   graph,
+                    const char* name,
+                    TF_DataType dtype)
 {
     return AddTensorInput<T>(numInputs, input, inputValues, inputCount, graph, name, dtype, 1, 1, 0);
 }
 
 template <typename T>
-T* AddScalarOutput(int         numOutputs,
-                   TF_Output*  output,
-                   TF_Tensor** outputValues,
-                   int&        outputCount,
-                   TF_Graph*   graph,
-                   const char* name,
-                   TF_DataType dtype,
-                   int         index)
+void AddScalarOutput(int         numOutputs,
+                     TF_Output*  output,
+                     TF_Tensor** outputValues,
+                     int&        outputCount,
+                     TF_Graph*   graph,
+                     const char* name,
+                     TF_DataType dtype,
+                     int         index)
 {
-    return AddTensorOutput<T>(numOutputs, output, outputValues, outputCount, graph, name, dtype, index, 1, 1, 0);
+    AddTensorOutput<T>(numOutputs, output, outputValues, outputCount, graph, name, dtype, index, 1, 1, 0);
 }
 
-MLJIT_Session_CSE* mljit_session_try_create_cse(const char* savedPolicyDir)
+void Add_CategoricalProjectionNetwork_logits_Output(
+    int numOutputs, TF_Output* output, TF_Tensor** outputValues, int& outputCount, TF_Graph* graph)
+{
+    AddTensorOutput<float>(numOutputs, output, outputValues, outputCount, graph, "StatefulPartitionedCall",
+                           TF_FLOAT, 0, 2, 1, 2);
+}
+
+MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy(const char* savedPolicyDir)
 {
     if (!savedPolicyDir)
         return nullptr;
@@ -282,47 +313,50 @@ MLJIT_Session_CSE* mljit_session_try_create_cse(const char* savedPolicyDir)
     assert(numInputs == inputCount);
 
     //********* Get Output tensors
-    int         numOutputs   = 1;
+    int         numOutputs   = 2;
     TF_Output*  output       = (TF_Output*)malloc(sizeof(TF_Output) * numOutputs);
     TF_Tensor** outputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*) * numOutputs);
 
     int outputCount = 0;
 
+    // This is only for the 'collect_policy'.
+    Add_CategoricalProjectionNetwork_logits_Output(numOutputs, output, outputValues, outputCount, graph);
+
     // This is the "cse_decision".
     AddScalarOutput<int64_t>(numOutputs, output, outputValues, outputCount, graph,
-                                                                                    "StatefulPartitionedCall", TF_INT64, 0);
+                                                                                    "StatefulPartitionedCall", TF_INT64, 1);
 
     assert(numOutputs == outputCount);
 
-    //********* MLJIT_Session
-    auto mljitSession          = new MLJIT_Session_CSE();
-    mljitSession->graph        = graph;
-    mljitSession->status       = status;
-    mljitSession->sessionOpts  = sessionOpts;
-    mljitSession->session      = session;
-    mljitSession->numInputs    = numInputs;
-    mljitSession->input        = input;
-    mljitSession->inputValues  = inputValues;
-    mljitSession->numOutputs   = numOutputs;
-    mljitSession->output       = output;
-    mljitSession->outputValues = outputValues;
-    return mljitSession;
+    //********* MLJIT_Policy
+    auto policy          = new MLJIT_CseCollectPolicy();
+    policy->graph        = graph;
+    policy->status       = status;
+    policy->sessionOpts  = sessionOpts;
+    policy->session      = session;
+    policy->numInputs    = numInputs;
+    policy->input        = input;
+    policy->inputValues  = inputValues;
+    policy->numOutputs   = numOutputs;
+    policy->output       = output;
+    policy->outputValues = outputValues;
+    return policy;
 }
 
-void mljit_session_destroy(MLJIT_Session* mljitSession)
+void mljit_destroy_policy(MLJIT_Policy* policy)
 {
-    auto graph       = mljitSession->graph;
-    auto status      = mljitSession->status;
-    auto sessionOpts = mljitSession->sessionOpts;
-    auto session     = mljitSession->session;
+    auto graph       = policy->graph;
+    auto status      = policy->status;
+    auto sessionOpts = policy->sessionOpts;
+    auto session     = policy->session;
 
-    auto numInputs   = mljitSession->numInputs;
-    auto input       = mljitSession->input;
-    auto inputValues = mljitSession->inputValues;
+    auto numInputs   = policy->numInputs;
+    auto input       = policy->input;
+    auto inputValues = policy->inputValues;
 
-    auto numOutputs   = mljitSession->numOutputs;
-    auto output       = mljitSession->output;
-    auto outputValues = mljitSession->outputValues;
+    auto numOutputs   = policy->numOutputs;
+    auto output       = policy->output;
+    auto outputValues = policy->outputValues;
     
     // Delete tensors
     for (int i = 0; i < numInputs; i++)
@@ -416,35 +450,7 @@ void mljit_session_destroy(MLJIT_Session* mljitSession)
     free(input);
     free(output);
 
-    delete mljitSession;
-}
-
-void MLJIT_Session::Action()
-{
-    auto status  = this->status;
-    auto session = this->session;
-
-    auto numInputs   = this->numInputs;
-    auto input       = this->input;
-    auto inputValues = this->inputValues;
-
-    auto numOutputs   = this->numOutputs;
-    auto output       = this->output;
-    auto outputValues = this->outputValues;
-
-    TF_SessionRun(session, nullptr, (TF_Output*)&input[0], &inputValues[0], numInputs, &output[0], &outputValues[0],
-                  numOutputs, nullptr, 0, nullptr, status);
-
-    if (TF_GetCode(status) == TF_OK)
-    {
-#ifdef PRINT_MLJIT_LOG
-        printf("TF_SessionRun OK\n");
-#endif
-    }
-    else
-    {
-        printf("%s", TF_Message(status));
-    }
+    delete policy;
 }
 
 #endif // DEBUG
