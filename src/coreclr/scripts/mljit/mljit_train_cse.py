@@ -503,7 +503,7 @@ def save_policy(policy_saver, path):
     print(f"[mljit] Saved policy in '{path}'!")
 
 def superpmi_collect_data(corpus_file_path, spmi_indices):
-    data = mljit_superpmi.collect_data(corpus_file_path, spmi_indices)
+    data = mljit_superpmi.collect_data(corpus_file_path, spmi_indices, True)
     data_logs = flatten(map(lambda x: x.log, data))
     print('[mljit] Creating sequence examples...')
     return list(map(create_serialized_sequence_example, data_logs))

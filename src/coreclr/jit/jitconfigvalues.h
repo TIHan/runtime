@@ -790,6 +790,7 @@ CONFIG_INTEGER(JitDispIns, W("JitDispIns"), 0)
 // Allow to enregister locals with struct type.
 RELEASE_CONFIG_INTEGER(JitEnregStructLocals, W("JitEnregStructLocals"), 1)
 
+CONFIG_INTEGER(MLJitTrain, W("MLJitTrain"), 0)
 CONFIG_STRING(MLJitTrainLogFile, W("MLJitTrainLogFile"))
 
 #undef CONFIG_INTEGER

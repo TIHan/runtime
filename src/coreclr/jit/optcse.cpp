@@ -139,6 +139,20 @@ void mljit_policy_set_cse_inputs(MLJIT_CsePolicyBase* policy, Compiler* compiler
 }
 
 // For ML training.
+bool run_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
+{
+    if (currentCollectPolicy)
+    {
+        mljit_policy_set_cse_inputs(currentCollectPolicy, compiler, minCseCost, cse);
+        currentCollectPolicy->Action();
+        bool cseDecision = currentCollectPolicy->GetOutput_cse_decision();
+        currentCollectPolicy->LogAction();
+        return cseDecision;
+    }
+    return false;
+}
+
+// For ML training.
 void log_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse, bool didCse)
 {
     if (currentCollectPolicy)
@@ -5162,10 +5176,18 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         CSEdsc* const dsc     = *ptr;
         CSE_Candidate candidate(this, dsc);
 
+#ifdef DEBUG
+        int mltrain = JitConfig.MLJitTrain();
+        if ((mltrain == 0) && !dsc->IsViable())
+#else  // DEBUG
         if (!dsc->IsViable())
+#endif // !DEBUG
         {
 #ifdef DEBUG
-            log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), false);
+            if (mltrain == 0)
+            {
+                log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), false);
+            }
 #endif // DEBUG
             continue;
         }
@@ -5194,7 +5216,20 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         }
 #endif // DEBUG
 
+#ifdef DEBUG
+        bool doCSE = false;
+        if (mltrain == 1)
+        {
+            doCSE = run_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
+        }
+        else
+        {
+            doCSE = PromotionCheck(&candidate);
+        }
+#else  // DEBUG
         bool doCSE = PromotionCheck(&candidate);
+#endif // !DEBUG
+
 
 #ifdef DEBUG
 
@@ -5238,7 +5273,10 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         }
 
 #ifdef DEBUG
-        log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), doCSE);
+        if (JitConfig.MLJitTrain() == 0)
+        {
+            log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), doCSE);
+        }
 #endif // DEBUG
     }
 }

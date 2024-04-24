@@ -251,13 +251,16 @@ def parse_log_file(spmi_index, path):
 
 # --------------------------------------------------------------------------------
 
-def superpmi_jit(superpmi_process, spmi_index, cse_replay_seqs):
+def superpmi_jit(superpmi_process, spmi_index, base_line_train, cse_replay_seqs):
     (p, _, q, _) = superpmi_process
     log_file = os.path.join(log_path, f'_mljit_log_{p.pid}.json')
     cse_replay_seqs_option = ''
     if cse_replay_seqs:
         cse_replay_seqs_option = f'!JitReplayCSE=\"{cse_replay_seqs}\"'.replace('[', '').replace(']', '')
-    p.stdin.write(f'{spmi_index} !MLJitTrainLogFile={log_file} {cse_replay_seqs_option}\n')
+    train_option = '!MLJitTrain=1'
+    if base_line_train:
+        train_option = '!MLJitTrain=0'
+    p.stdin.write(f'{spmi_index} !MLJitTrainLogFile={log_file} {cse_replay_seqs_option} {train_option}\n')
     try:
         line = ''
         try:
@@ -309,7 +312,7 @@ def superpmi_get_next_available_process(superpmi_processes):
 # --------------------------------------------------------------------------------
 
 # TODO: Add more inputs?
-def jit(spmi_index, cse_replay_seqs, superpmi_processes):
+def jit(spmi_index, base_line_train, cse_replay_seqs, superpmi_processes):
     p = None
 
     result = None
@@ -320,7 +323,7 @@ def jit(spmi_index, cse_replay_seqs, superpmi_processes):
         if s.acquire():
             l.clear()
             try:
-                result = superpmi_jit(p, spmi_index, cse_replay_seqs)
+                result = superpmi_jit(p, spmi_index, base_line_train, cse_replay_seqs)
             finally:
                 l.set()
                 s.release()
@@ -328,11 +331,11 @@ def jit(spmi_index, cse_replay_seqs, superpmi_processes):
     return result
 
 # --------------------------------------------------------------------------------
-def collect_data(corpus_file_path, spmi_methods):
+def collect_data(corpus_file_path, spmi_methods, base_line_train):
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=superpmi_process_count) as executor:
-        def create_jit_task(spmi_index, cse_replay_seqs):
-            return executor.submit(jit, spmi_index, cse_replay_seqs, superpmi_processes)
+        def create_jit_task(spmi_index, base_line_train, cse_replay_seqs):
+            return executor.submit(jit, spmi_index, base_line_train, cse_replay_seqs, superpmi_processes)
 
         superpmi_processes = create_many_superpmi_processes(clrjit_dll, corpus_file_path)
 
@@ -346,7 +349,7 @@ def collect_data(corpus_file_path, spmi_methods):
 
         time_stamp = now()
 
-        tasks = list(map(lambda x: create_jit_task(x, []), spmi_methods))
+        tasks = list(map(lambda x: create_jit_task(x, base_line_train, []), spmi_methods))
 
         def eval(task):
             try:
