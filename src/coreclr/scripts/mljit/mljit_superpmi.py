@@ -75,7 +75,7 @@ class Method:
     numCse: int
     numCand: int
     seq: any
-    spmi: int
+    spmi_index: int
     # param: str
     # likelihood: str
     # baseLikelihood: str
