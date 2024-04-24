@@ -145,18 +145,18 @@ def create_agent():
         dropout_layer_params=None,
         activation_fn=tf.keras.activations.relu)
 
-    # value_network = value_network.ValueNetwork(
-    #   time_step_spec.observation,
-    #   preprocessing_layers=preprocessing_layers,
-    #   preprocessing_combiner=preprocessing_combiner)
+    critic_network = value_network.ValueNetwork(
+      time_step_spec.observation,
+      preprocessing_layers=preprocessing_layers,
+      preprocessing_combiner=preprocessing_combiner)
 
-    value_network = ConstantValueNetwork(time_step_spec.observation)
+    #critic_network = ConstantValueNetwork(time_step_spec.observation)
 
     agent = ppo_agent.PPOAgent(
         time_step_spec=time_step_spec,
         action_spec=action_spec,
         actor_net=actor_network,
-        value_net=value_network,
+        value_net=critic_network,
 
         # Settings below match MLGO, most of the settings are actually the default values of PPOAgent.
         optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
@@ -503,10 +503,63 @@ def save_policy(policy_saver, path):
     print(f"[mljit] Saved policy in '{path}'!")
 
 def superpmi_collect_data(corpus_file_path, spmi_indices):
-    data = mljit_superpmi.collect_data(corpus_file_path, spmi_indices, True)
-    data_logs = flatten(map(lambda x: x.log, data))
+
+    # From https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters
+    # Print iterations progress
+    def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
+        """
+        Call in a loop to create terminal progress bar
+        @params:
+            iteration   - Required  : current iteration (Int)
+            total       - Required  : total iterations (Int)
+            prefix      - Optional  : prefix string (Str)
+            suffix      - Optional  : suffix string (Str)
+            decimals    - Optional  : positive number of decimals in percent complete (Int)
+            length      - Optional  : character length of bar (Int)
+            fill        - Optional  : bar fill character (Str)
+            printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+        """
+        percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+        filledLength = int(length * iteration // total)
+        bar = fill * filledLength + '-' * (length - filledLength)
+        print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
+        # Print New Line on Complete
+        if iteration == total: 
+            print()
+
+    count = 0
+    acc = []
+
+    for spmi_index in spmi_indices:
+        data = mljit_superpmi.collect_data(corpus_file_path, [spmi_index], 0) # baseline
+
+        if data:
+            data_random = mljit_superpmi.collect_data(corpus_file_path, [spmi_index for _ in range(25)], 1) # random exploration
+
+            item = data[0]
+            for i in range(len(data_random)):
+                item_random = data_random[i]
+                if item_random.perfScore > item.perfScore:
+                    for x in item_random.log:
+                        x.reward = -1.0
+                elif item_random.perfScore < item.perfScore:
+                    for x in item_random.log:
+                        x.reward = 1.0
+                else:
+                    for x in item_random.log:
+                        x.reward = 0.0
+                
+            data_random_logs = flatten(map(lambda x: x.log, data_random))
+
+            acc = acc + data_random_logs
+        else:
+            print(f'[mljit] Skipped training for spmi_index {spmi_index} as there were issues.')
+
+        printProgressBar(count, len(spmi_indices))
+        count = count + 1
+
     print('[mljit] Creating sequence examples...')
-    return list(map(create_serialized_sequence_example, data_logs))
+    return list(map(create_serialized_sequence_example, acc))
 
 # ---------------------------------------
 
@@ -520,7 +573,7 @@ if not mljit_superpmi.mldump_file_exists():
     print('[mljit] Finished producing mldump.txt')
 
 def filter_cse_methods(m):
-    if m.numCse > 0:
+    if m.numCse > 0 and m.spmi_index != 245 and m.spmi_index != 462 and m.spmi_index != 514 and m.spmi_index != 686:
         return True and m.is_valid
     else:
         return False
@@ -533,7 +586,9 @@ save_policy(policy_saver, saved_policy_path)
 save_policy(collect_policy_saver, saved_collect_policy_path)
 
 num_runs = 1
-spmi_indices = list(map(lambda x: x.spmi_index, methodsWithCse)) # [1318 for _ in range(5000)]
+spmi_indices = list(map(lambda x: x.spmi_index, methodsWithCse))[:500] # [1318 for _ in range(1)]
+
+print('[mljit] Training...')
 for _ in range(num_runs):
     sequence_examples = superpmi_collect_data(corpus_file_path, spmi_indices)
     print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}')

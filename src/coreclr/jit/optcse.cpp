@@ -138,6 +138,19 @@ void mljit_policy_set_cse_inputs(MLJIT_CsePolicyBase* policy, Compiler* compiler
     policy->SetInput_discount(0);
 }
 
+bool run_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
+{
+    if (currentPolicy)
+    {
+        mljit_policy_set_cse_inputs(currentPolicy, compiler, minCseCost, cse);
+        currentPolicy->Action();
+        bool cseDecision = currentPolicy->GetOutput_cse_decision();
+        currentPolicy->LogAction();
+        return cseDecision;
+    }
+    return false;
+}
+
 // For ML training.
 bool run_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
 {
@@ -5222,6 +5235,10 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         {
             doCSE = run_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
         }
+        else if (mltrain == 2)
+        {
+            doCSE = run_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
+        }
         else
         {
             doCSE = PromotionCheck(&candidate);
@@ -5273,7 +5290,7 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         }
 
 #ifdef DEBUG
-        if (JitConfig.MLJitTrain() == 0)
+        if (mltrain == 0)
         {
             log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), doCSE);
         }

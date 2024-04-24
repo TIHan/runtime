@@ -251,26 +251,20 @@ def parse_log_file(spmi_index, path):
 
 # --------------------------------------------------------------------------------
 
-def superpmi_jit(superpmi_process, spmi_index, base_line_train, cse_replay_seqs):
+def superpmi_jit(superpmi_process, spmi_index, train_kind, cse_replay_seqs):
     (p, _, q, _) = superpmi_process
     log_file = os.path.join(log_path, f'_mljit_log_{p.pid}.json')
     cse_replay_seqs_option = ''
     if cse_replay_seqs:
         cse_replay_seqs_option = f'!JitReplayCSE=\"{cse_replay_seqs}\"'.replace('[', '').replace(']', '')
-    train_option = '!MLJitTrain=1'
-    if base_line_train:
-        train_option = '!MLJitTrain=0'
+    train_option = f'!MLJitTrain={train_kind}'
     p.stdin.write(f'{spmi_index} !MLJitTrainLogFile={log_file} {cse_replay_seqs_option} {train_option}\n')
     try:
         line = ''
         try:
-            line = q.get(timeout=60) # 1 minute
+            line = q.get(timeout=10) # 10 seconds
         except Exception:
-            print(f'spmi_index {spmi_index} timed out.')
-            # print(f'spmi_index {spmi_index} timed out. Retrying...')
-            # p.stdin.write(f'{spmi_index} !MLJitTrainLogFile={log_file} {cse_replay_seqs_option}\n')
-            # line = q.get(timeout=60) # 1 minute
-            return None
+            return -1
 
         meth = parse_mldump_line(line)
         if meth.is_valid:
@@ -301,29 +295,44 @@ def superpmi_is_busy(superpmi_process):
     return not l.is_set()
 
 def superpmi_get_next_available_process(superpmi_processes):
-    results = [x for x in superpmi_processes if not superpmi_is_busy(x)]
+    results = [i for i in range(len(superpmi_processes)) if not superpmi_is_busy(superpmi_processes[i])]
     while not results:
         # This will not happen if the ThreadPoolExecutor has the same number of workers as the number of superpmi_processes.
         (_, _, _, (l, _)) = superpmi_processes[random.randrange(0, len(superpmi_processes) - 1)]
         l.wait()
-        results = [x for x in superpmi_processes if not superpmi_is_busy(x)]
-    return results[0]
+        results = [i for i in range(len(superpmi_processes)) if not superpmi_is_busy(superpmi_processes[i])]
+    return (results[0], superpmi_processes[results[0]])
 
 # --------------------------------------------------------------------------------
 
 # TODO: Add more inputs?
-def jit(spmi_index, base_line_train, cse_replay_seqs, superpmi_processes):
+def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, superpmi_processes):
     p = None
 
     result = None
     while p is None:
-        p = superpmi_get_next_available_process(superpmi_processes)
+        (pi, p) = superpmi_get_next_available_process(superpmi_processes)
         (_, _, _, (l, s)) = p
 
         if s.acquire():
             l.clear()
             try:
-                result = superpmi_jit(p, spmi_index, base_line_train, cse_replay_seqs)
+                result = superpmi_jit(p, spmi_index, train_kind, cse_replay_seqs)
+                if result == -1:
+                    print(f'[mljit] spmi_index {spmi_index} timed out. Terminating SuperPMI process...')
+                    superpmi_terminate(p)
+                    print("[mljit] Creating new SuperPMI process...")
+                    superpmi_processes[pi] = create_superpmi_process(clrjit_dll, corpus_file_path)
+
+                    tmpp = create_superpmi_process(clrjit_dll, corpus_file_path)
+
+                    print(f"[mljit] Running isolated SuperPMI process for spmi_index {spmi_index}")
+                    result = superpmi_jit(tmpp, spmi_index, train_kind, cse_replay_seqs)
+                    superpmi_terminate(tmpp)
+                    if result == -1:
+                        print(f'[mljit] spmi_index {spmi_index} timed out in isolated SuperPMI process.')
+                        result = None
+                    p = -1
             finally:
                 l.set()
                 s.release()
@@ -331,25 +340,26 @@ def jit(spmi_index, base_line_train, cse_replay_seqs, superpmi_processes):
     return result
 
 # --------------------------------------------------------------------------------
-def collect_data(corpus_file_path, spmi_methods, base_line_train):
+def collect_data(corpus_file_path, spmi_methods, train_kind, verbose_log=False):
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=superpmi_process_count) as executor:
-        def create_jit_task(spmi_index, base_line_train, cse_replay_seqs):
-            return executor.submit(jit, spmi_index, base_line_train, cse_replay_seqs, superpmi_processes)
+        def create_jit_task(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs):
+            return executor.submit(jit, clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, superpmi_processes)
 
         superpmi_processes = create_many_superpmi_processes(clrjit_dll, corpus_file_path)
 
-        print("[mljit] Collecting data...")
-        print(f'core_root:\t\t{core_root}')
-        print(f'clrjit_dll:\t\t{clrjit_dll}')
-        print(f'superpmi_exe:\t\t{superpmi_exe}')
-        print(f'Corpus:\t\t\t{corpus_file_path}')
-        print(f'[mljit] SuperPMI Process Count:\t{len(superpmi_processes)}')
-        print(f'[mljit] SuperPMI starting... Method count: {len(spmi_methods)} \n')
+        if verbose_log:
+            print("[mljit] Collecting data...")
+            print(f'[mljit] core_root:\t\t{core_root}')
+            print(f'[mljit] clrjit_dll:\t\t{clrjit_dll}')
+            print(f'[mljit] superpmi_exe:\t\t{superpmi_exe}')
+            print(f'[mljit] Corpus:\t\t\t{corpus_file_path}')
+            print(f'[mljit] SuperPMI Process Count:\t{len(superpmi_processes)}')
+            print(f'[mljit] SuperPMI starting... Method count: {len(spmi_methods)} \n')
 
         time_stamp = now()
 
-        tasks = list(map(lambda x: create_jit_task(x, base_line_train, []), spmi_methods))
+        tasks = list(map(lambda x: create_jit_task(clrjit_dll, corpus_file_path, x, train_kind, []), spmi_methods))
 
         def eval(task):
             try:
@@ -357,20 +367,18 @@ def collect_data(corpus_file_path, spmi_methods, base_line_train):
             except Exception:
                 return None
         results = list(filter(lambda x: x is not None, map(eval, tasks)))
-        # TODO: do something with the results
 
         if not results:
-            print("Warning: No method results were returned. Check if SuperPMI is being invoked correctly.")
-        # else:
-        #     for x in results:
-        #         print(x)
+            print("[mljit] WARNING: No method results were returned. Check if SuperPMI is being invoked correctly.")
 
-    print(f'\n[mljit] SuperPMI stopping...')
+    if verbose_log:
+        print(f'\n[mljit] SuperPMI stopping...')
 
     for p in superpmi_processes:
         superpmi_terminate(p)
 
-    print(f'[mljit] SuperPMI finished in: {now() - time_stamp}')
-    print(f'[mljit] SuperPMI result count: {len(results)}\n')
+    if verbose_log:
+        print(f'[mljit] SuperPMI finished in: {now() - time_stamp}')
+        print(f'[mljit] SuperPMI result count: {len(results)}\n')
     return results
 # --------------------------------------------------------------------------------
