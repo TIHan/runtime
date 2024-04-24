@@ -41,7 +41,10 @@ const size_t Compiler::s_optCSEhashGrowthFactor = 2;
 const size_t Compiler::s_optCSEhashBucketSize   = 4;
 
 #if DEBUG
-void mljit_policy_set_cse_inputs(MLJIT_CseCollectPolicy* policy, Compiler* compiler, int minCseCost, CSEdsc* cse)
+static MLJIT_CsePolicy*        currentPolicy        = nullptr;
+static MLJIT_CseCollectPolicy* currentCollectPolicy = nullptr;
+
+void mljit_policy_set_cse_inputs(MLJIT_CsePolicyBase* policy, Compiler* compiler, int minCseCost, CSEdsc* cse)
 {
     const unsigned char costEx       = cse->csdTree->GetCostEx();
     const double        deMinimis    = 1e-3;
@@ -133,6 +136,20 @@ void mljit_policy_set_cse_inputs(MLJIT_CseCollectPolicy* policy, Compiler* compi
     policy->SetInput_reward(0);
     policy->SetInput_step_type(0);
     policy->SetInput_discount(0);
+}
+
+// For ML training.
+void log_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse, bool didCse)
+{
+    if (currentCollectPolicy)
+    {
+        mljit_policy_set_cse_inputs(currentCollectPolicy, compiler, minCseCost, cse);
+        currentCollectPolicy->Action();
+        // Force set the output so we can log it.
+        currentCollectPolicy->SetOutput_cse_decision(didCse);
+        //  bool cseDecision = currentCollectPolicy->GetOutput_cse_decision();
+        currentCollectPolicy->LogAction();
+    }
 }
 #endif // DEBUG
 
@@ -5127,11 +5144,6 @@ void CSE_Heuristic::AdjustHeuristic(CSE_Candidate* successfulCandidate)
     }
 }
 
-#ifdef DEBUG
-static MLJIT_CsePolicy*        currentPolicy        = nullptr;
-static MLJIT_CseCollectPolicy* currentCollectPolicy = nullptr;
-#endif // DEBUG
-
 //------------------------------------------------------------------------
 // ConsiderCandidates: examine candidates and perform CSEs.
 //
@@ -5152,6 +5164,9 @@ void CSE_HeuristicCommon::ConsiderCandidates()
 
         if (!dsc->IsViable())
         {
+#ifdef DEBUG
+            log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), false);
+#endif // DEBUG
             continue;
         }
 
@@ -5220,17 +5235,11 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         {
             PerformCSE(&candidate);
             madeChanges = true;
+        }
 
 #ifdef DEBUG
-            if (currentCollectPolicy)
-            {
-                mljit_policy_set_cse_inputs(currentCollectPolicy, m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
-                currentCollectPolicy->Action();
-                bool cseDecision = currentCollectPolicy->GetOutput_cse_decision();
-                currentCollectPolicy->LogAction();
-            }
+        log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), doCSE);
 #endif // DEBUG
-        }
     }
 }
 

@@ -23,6 +23,7 @@ log_path          = os.environ['DOTNET_MLJitLogPath']
 corpus_file_path  = os.environ['DOTNET_MLJitCorpusFile']
 superpmi_exe      = os.path.join(core_root, 'superpmi.exe') # TODO: Only works on windows, fix it for other OSes
 clrjit_dll        = os.path.join(core_root, 'clrjit.dll') # TODO: Only works on windows, fix it for other OSes
+mldump_txt        = os.path.join(log_path, "mldump.txt")
 
 # --------------------------------------------------------------------------------
 # Utility
@@ -70,15 +71,16 @@ superpmi_process_count = int(os.cpu_count() / 2) # divide by 2 because of hyper-
 
 @dataclass
 class Method:
+    is_valid: bool
     perfScore: float
     numCse: int
     numCand: int
     seq: any
     spmi: int
-    param: str
-    likelihood: str
-    baseLikelihood: str
-    feature: str
+    # param: str
+    # likelihood: str
+    # baseLikelihood: str
+    # feature: str
     codeSize: float
     log: any
 
@@ -110,7 +112,7 @@ def create_superpmi_process(clrjit_dll_path, mch_path):
 
     p = subprocess.Popen(
         superpmi_args_joined,
-        stdin=PIPE, stdout=PIPE, 
+        stdin=PIPE, stdout=PIPE, stderr=PIPE,
         text=True, 
         bufsize=1, 
         universal_newlines=True,
@@ -120,9 +122,9 @@ def create_superpmi_process(clrjit_dll_path, mch_path):
         while p.poll() is None:
             line = p.stdout.readline()
             # Uncomment below for debugging
-            if line:
-                print(line)
-            if not line.startswith("[streaming]") and not line.isspace():
+            # if line:
+            #     print(line)
+            if line.startswith("; Total bytes of code"):
                 q.put(line)
 
     q = SimpleQueue()
@@ -135,8 +137,11 @@ def create_many_superpmi_processes(clrjit_dll_path, mch_path):
     return [create_superpmi_process(clrjit_dll_path, mch_path) for x in range(superpmi_process_count)]
 
 # not used, but useful for getting a complete list of results from JITted functions.
-def jit_mldump(mch):
-    run(f"{superpmi_exe} -jitoption JitStdOutFile=mldump.txt -jitoption JitMetrics=1 {clrjit_dll} {mch}")
+def produce_mldump_file():
+    run(f"{superpmi_exe} -jitoption JitStdOutFile={mldump_txt} -jitoption JitMetrics=1 {clrjit_dll} {corpus_file_path}")
+
+def mldump_file_exists():
+    return os.path.exists(mldump_txt)
 
 def parse_mldump_line(line):
     perfScorePattern        = regex('(PerfScore|perf score) (\d+(\.\d+)?)', line, 2)
@@ -144,48 +149,110 @@ def parse_mldump_line(line):
     numCandPattern          = regex('num cand ([0-9]{1,})', line, 1)
     seqPattern              = regex('seq ([0-9,]*)', line, 1)
     spmiPattern             = regex('spmi index ([0-9]{1,})', line, 1)
-    paramPattern            = regex('updatedparams ([0-9\.,-e]{1,})', line, 1)
-    likelihoodPattern       = regex('likelihoods ([0-9\.,-e]{1,})', line, 1)
-    baseLikelihoodPattern   = regex('baseLikelihoods ([0-9\.,-e]{1,})', line, 1)
-    featurePattern          = regex('features,([0-9]*,CSE #[0-9][0-9],[0-9\.,-e]{1,})', line)
+    # paramPattern            = regex('updatedparams ([0-9\.,-e]{1,})', line, 1)
+    # likelihoodPattern       = regex('likelihoods ([0-9\.,-e]{1,})', line, 1)
+    # baseLikelihoodPattern   = regex('baseLikelihoods ([0-9\.,-e]{1,})', line, 1)
+    # featurePattern          = regex('features,([0-9]*,CSE #[0-9][0-9],[0-9\.,-e]{1,})', line)
     codeSizePattern         = regex('Total bytes of code ([0-9]{1,})', line, 1)
 
+    is_valid = True
+
+    seq = []
+    if seqPattern:
+        seq = list(map(lambda x: int(x), seqPattern.replace(' ', '').split(',')))
+
+    perfScore = 10000000000.0
+    if perfScorePattern:
+        try:
+            perfScore = float(perfScorePattern)
+        except Exception:
+            #print(f'There was an error when parsing the \'PerfScore\' from the JIT output: {perfScorePattern}')
+            is_valid = False
+    else:
+        #print(f'\'PerfScore\' does not exist.')
+        is_valid = False
+
+    codeSize = 10000000000.0
+    if codeSizePattern:
+        try:
+            codeSize = float(codeSizePattern)
+        except Exception:
+            #print(f'There was an error when parsing the \'Total bytes of code\' from the JIT output: {codeSizePattern}')
+            is_valid = False
+    else:
+        #print(f'\'Total bytes of code\' does not exist.')
+        is_valid = False
+
+    numCse = 0
+    if numCsePattern:
+        try:
+            numCse = int(numCsePattern)
+        except Exception:
+            #print(f'There was an error when parsing the \'num cse\' from the JIT output: {numCsePattern}')
+            is_valid = False
+    else:
+        #print(f'\'num cse\' does not exist.')
+        is_valid = False
+
+    numCand = 0
+    if numCandPattern:
+        try:
+            numCand = int(numCandPattern)
+        except Exception:
+            #print(f'There was an error when parsing the \'num cand\' from the JIT output: {numCandPattern}')
+            is_valid = False
+    else:
+        #print(f'\'num cand\' does not exist.')
+        is_valid = False
+
+    spmi_index = -1
+    if numCsePattern:
+        try:
+            spmi_index = int(spmiPattern)
+        except Exception:
+            #print(f'There was an error when parsing the \'spmi index\' from the JIT output: {spmiPattern}')
+            is_valid = False
+    else:
+        #print(f'\'spmi index\' does not exist.')
+        is_valid = False
+
     return Method(
-            float(perfScorePattern),
-            int(numCsePattern),
-            int(numCandPattern),
-            list(map(lambda x: int(x), seqPattern.replace(' ', '').split(','))),
-            int(spmiPattern),
-            paramPattern,
-            likelihoodPattern,
-            baseLikelihoodPattern,
-            featurePattern,
-            float(codeSizePattern),
+            is_valid,
+            perfScore,
+            numCse,
+            numCand,
+            seq,
+            spmi_index,
+            # paramPattern,
+            # likelihoodPattern,
+            # baseLikelihoodPattern,
+            # featurePattern,
+            codeSize,
             []
         )
 
-def parse_mldump(lines):
+def parse_mldump_filter_cse(lines):
     def filter_cse_methods(m):
         if m.numCse > 0:
-            return True
+            return True and m.is_valid
         else:
             return False
     return filter(filter_cse_methods, map(parse_mldump_line, lines))
 
-def parse_mldump_file():
-    dump_file = open("mldump.txt", "r")
+def parse_mldump_file_filter_cse():
+    dump_file = open(mldump_txt, "r")
     lines = dump_file.readlines()
     dump_file.close()
-    return parse_mldump(lines)
+    return list(parse_mldump_filter_cse(lines))
 
-def parse_log_file(path):
+def parse_log_file(spmi_index, path):
     try:
         f = open(path)
         data = json.load(f, object_hook=lambda d: SimpleNamespace(**d))
         f.close()
-        return data;
+        return data
     except Exception as error:
-        print(f'There was an error when parsing a log file from the JIT output:\n{error}')
+        print(f'There was an error when parsing the training log file from the JIT output on spmi_index {spmi_index}:\n{error}')
         return []
 
 # --------------------------------------------------------------------------------
@@ -198,18 +265,33 @@ def superpmi_jit(superpmi_process, spmi_index, cse_replay_seqs):
         cse_replay_seqs_option = f'!JitReplayCSE=\"{cse_replay_seqs}\"'.replace('[', '').replace(']', '')
     p.stdin.write(f'{spmi_index} !MLJitTrainLogFile={log_file} {cse_replay_seqs_option}\n')
     try:
-        line = q.get(timeout=60)
+        line = ''
+        try:
+            line = q.get(timeout=60) # 1 minute
+        except Exception:
+            print(f'spmi_index {spmi_index} timed out.')
+            # print(f'spmi_index {spmi_index} timed out. Retrying...')
+            # p.stdin.write(f'{spmi_index} !MLJitTrainLogFile={log_file} {cse_replay_seqs_option}\n')
+            # line = q.get(timeout=60) # 1 minute
+            return None
+
         meth = parse_mldump_line(line)
-        meth.log = parse_log_file(log_file)
+        if meth.is_valid:
+            meth.log = parse_log_file(spmi_index, log_file)
+            if meth.numCse > 0 and not meth.log:
+                print(f'Expected log info of CSEs for spmi_index {spmi_index}')
+        else:
+            print(f'Could not parse the metrics line on spmi_index {spmi_index}. Line: {line}')
         return meth
     except Exception as error:
-        print(f'There was an error when parsing a line from the JIT output:\n{error}')
+        print(f'There was an error when parsing the JIT output on spmi_index {spmi_index}:\n{error}')
         return None
     finally:
         try:
             os.remove(log_file)
         except Exception as error:
-            print(f'There was an error when removing the log file:\n{error}')
+            ()
+            #print(f'There was an error when removing the log file:\n{error}')
 
 
 def superpmi_terminate(superpmi_process):
@@ -266,12 +348,11 @@ def collect_data(spmi_methods):
         print(f'superpmi_exe:\t\t{superpmi_exe}')
         print(f'Corpus:\t\t\t{corpus_file_path}')
         print(f'[mljit] SuperPMI Process Count:\t{len(superpmi_processes)}')
-
-        print("\n[mljit] SuperPMI starting...\n")
+        print(f'[mljit] SuperPMI starting... Method count: {len(spmi_methods)} \n')
 
         time_stamp = now()
 
-        tasks = list(map(lambda x: create_jit_task(x[0], x[1]), spmi_methods))
+        tasks = list(map(lambda x: create_jit_task(x, []), spmi_methods))
 
         def eval(task):
             try:
@@ -292,6 +373,7 @@ def collect_data(spmi_methods):
     for p in superpmi_processes:
         superpmi_terminate(p)
 
-    print(f'[mljit] SuperPMI finished in: {now() - time_stamp}\n')
+    print(f'[mljit] SuperPMI finished in: {now() - time_stamp}')
+    print(f'[mljit] SuperPMI result count: {len(results)}\n')
     return results
 # --------------------------------------------------------------------------------

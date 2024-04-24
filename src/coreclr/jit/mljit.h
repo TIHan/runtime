@@ -126,6 +126,7 @@ public:
     MLJIT_SET_SCALAR_INPUT_API(discount, float, 27);
 
     virtual int64_t GetOutput_cse_decision() = 0;
+    virtual void    SetOutput_cse_decision(int64_t value) = 0;
 
     void ResetLog()
     {
@@ -228,6 +229,14 @@ public:
         int64_t* data = reinterpret_cast<int64_t*>(TF_TensorData(outputValues[index]));
         return data[0];
     }
+
+    void SetOutput_cse_decision(int64_t value) override
+    {
+        int index = 0; // "0" - policy, "1" - collect_policy
+        assert(strcmp(TF_OperationName(output[index].oper), "StatefulPartitionedCall") == 0);
+        int64_t* data = reinterpret_cast<int64_t*>(TF_TensorData(outputValues[index]));
+        data[0]       = value;
+    }
 };
 
 class MLJIT_CseCollectPolicy : public MLJIT_CsePolicyBase
@@ -239,6 +248,14 @@ public:
         assert(strcmp(TF_OperationName(output[index].oper), "StatefulPartitionedCall") == 0);
         int64_t* data = reinterpret_cast<int64_t*>(TF_TensorData(outputValues[index]));
         return data[0];
+    }
+
+    void SetOutput_cse_decision(int64_t value) override
+    {
+        int index = 1; // "0" - policy, "1" - collect_policy
+        assert(strcmp(TF_OperationName(output[index].oper), "StatefulPartitionedCall") == 0);
+        int64_t* data = reinterpret_cast<int64_t*>(TF_TensorData(outputValues[index]));
+        data[0]       = value;
     }
 };
 

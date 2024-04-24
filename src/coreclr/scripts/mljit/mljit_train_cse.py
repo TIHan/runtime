@@ -472,26 +472,29 @@ def create_dataset_iter(sequence_examples):
 
 # Majority of this is from MLGO.
 def train(agent, sequence_examples):
-    dataset_iter = create_dataset_iter(sequence_examples)
-    for _ in range(num_iterations):
-        # When the data is not enough to fill in a batch, next(dataset_iter)
-        # will throw StopIteration exception, logging a warning message instead
-        # of killing the training when it happens.
-        try:
-            experience = next(dataset_iter)
-        except StopIteration:
-            logging.warning(
-                ('Warning: skip training because do not have enough data to fill '
-                'in a batch, consider increase data or reduce batch size.'))
-            break
+    if sequence_examples:
+        dataset_iter = create_dataset_iter(sequence_examples)
+        for _ in range(num_iterations):
+            # When the data is not enough to fill in a batch, next(dataset_iter)
+            # will throw StopIteration exception, logging a warning message instead
+            # of killing the training when it happens.
+            try:
+                experience = next(dataset_iter)
+            except StopIteration:
+                logging.warning(
+                    ('Skipped training because do not have enough data to fill '
+                    'in a batch, consider increase data or reduce batch size.'))
+                break
 
-        agent.train(experience)
-
-def create_collect_policy_saver(agent):
-    return PolicySaver(agent.collect_policy, batch_size=1, use_nest_path_signatures=False)
+            agent.train(experience)
+    else:
+       logging.warning('No data to train from collection.')
 
 def create_policy_saver(agent):
     return PolicySaver(agent.policy, batch_size=1, use_nest_path_signatures=False)
+
+def create_collect_policy_saver(agent):
+    return PolicySaver(agent.collect_policy, batch_size=1, use_nest_path_signatures=False)
 
 def save_policy(policy_saver, path):
     print(f"[mljit] Saving policy in '{path}'...")
@@ -501,6 +504,7 @@ def save_policy(policy_saver, path):
 def superpmi_collect_data(spmi_indices):
     data = mljit_superpmi.collect_data(spmi_indices)
     data_logs = flatten(map(lambda x: x.log, data))
+    print('[mljit] Creating sequence examples...')
     return list(map(create_serialized_sequence_example, data_logs))
 
 # ---------------------------------------
@@ -509,13 +513,25 @@ agent = create_agent()
 policy_saver = create_policy_saver(agent)
 collect_policy_saver = create_collect_policy_saver(agent)
 
+if not mljit_superpmi.mldump_file_exists():
+    print('[mljit] Producing mldump.txt...')
+    mljit_superpmi.produce_mldump_file()
+    print('[mljit] Finished producing mldump.txt')
+
+methodsWithCse = mljit_superpmi.parse_mldump_file_filter_cse()
+
+print(f'[mljit] Number of methods with a CSE: {len(methodsWithCse)}')
+
 # Save initial policy.
 save_policy(policy_saver, saved_policy_path)
 save_policy(collect_policy_saver, saved_collect_policy_path)
 
-test_num_runs = 1
-test_spmi_indices = [(37, []) for _ in range(1)]
-for _ in range(test_num_runs):
-    sequence_examples = superpmi_collect_data(test_spmi_indices)
+num_runs = 1
+spmi_indices = [1318 for _ in range(5000)] #list(map(lambda x: x.spmi, methodsWithCse))
+for _ in range(num_runs):
+    sequence_examples = superpmi_collect_data(spmi_indices)
+    print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}')
     train(agent, sequence_examples)
     save_policy(collect_policy_saver, saved_collect_policy_path)
+
+save_policy(policy_saver, saved_policy_path)
