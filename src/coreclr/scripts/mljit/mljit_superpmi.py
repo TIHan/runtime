@@ -20,7 +20,6 @@ from subprocess import PIPE
 
 core_root         = os.environ['CORE_ROOT']
 log_path          = os.environ['DOTNET_MLJitLogPath']
-corpus_file_path  = os.environ['DOTNET_MLJitCorpusFile']
 superpmi_exe      = os.path.join(core_root, 'superpmi.exe') # TODO: Only works on windows, fix it for other OSes
 clrjit_dll        = os.path.join(core_root, 'clrjit.dll') # TODO: Only works on windows, fix it for other OSes
 mldump_txt        = os.path.join(log_path, "mldump.txt")
@@ -137,7 +136,7 @@ def create_many_superpmi_processes(clrjit_dll_path, mch_path):
     return [create_superpmi_process(clrjit_dll_path, mch_path) for x in range(superpmi_process_count)]
 
 # not used, but useful for getting a complete list of results from JITted functions.
-def produce_mldump_file():
+def produce_mldump_file(corpus_file_path):
     run(f"{superpmi_exe} -jitoption JitStdOutFile={mldump_txt} -jitoption JitMetrics=1 {clrjit_dll} {corpus_file_path}")
 
 def mldump_file_exists():
@@ -231,19 +230,14 @@ def parse_mldump_line(line):
             []
         )
 
-def parse_mldump_filter_cse(lines):
-    def filter_cse_methods(m):
-        if m.numCse > 0:
-            return True and m.is_valid
-        else:
-            return False
-    return filter(filter_cse_methods, map(parse_mldump_line, lines))
+def parse_mldump_filter(predicate, lines):
+    return filter(predicate, map(parse_mldump_line, lines))
 
-def parse_mldump_file_filter_cse():
+def parse_mldump_file_filter(predicate):
     dump_file = open(mldump_txt, "r")
     lines = dump_file.readlines()
     dump_file.close()
-    return list(parse_mldump_filter_cse(lines))
+    return list(parse_mldump_filter(predicate, lines))
 
 def parse_log_file(spmi_index, path):
     try:
@@ -314,7 +308,7 @@ def superpmi_get_next_available_process(superpmi_processes):
 
 # --------------------------------------------------------------------------------
 
-# TODO: Add more inputs.
+# TODO: Add more inputs?
 def jit(spmi_index, cse_replay_seqs, superpmi_processes):
     p = None
 
@@ -334,7 +328,7 @@ def jit(spmi_index, cse_replay_seqs, superpmi_processes):
     return result
 
 # --------------------------------------------------------------------------------
-def collect_data(spmi_methods):
+def collect_data(corpus_file_path, spmi_methods):
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=superpmi_process_count) as executor:
         def create_jit_task(spmi_index, cse_replay_seqs):

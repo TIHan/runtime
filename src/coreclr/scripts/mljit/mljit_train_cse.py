@@ -24,6 +24,7 @@ from absl import logging
 
 # Use 'saved_model_cli show --dir saved_policy\ --tag_set serve --signature_def action' from the command line to see the inputs/outputs of the policy.
 
+corpus_file_path  = os.environ['DOTNET_MLJitCorpusFile']
 saved_policy_path = os.environ['DOTNET_MLJitSavedPolicyPath']
 saved_collect_policy_path = os.environ['DOTNET_MLJitSavedCollectPolicyPath']
 
@@ -502,7 +503,7 @@ def save_policy(policy_saver, path):
     print(f"[mljit] Saved policy in '{path}'!")
 
 def superpmi_collect_data(spmi_indices):
-    data = mljit_superpmi.collect_data(spmi_indices)
+    data = mljit_superpmi.collect_data(corpus_file_path, spmi_indices)
     data_logs = flatten(map(lambda x: x.log, data))
     print('[mljit] Creating sequence examples...')
     return list(map(create_serialized_sequence_example, data_logs))
@@ -515,10 +516,15 @@ collect_policy_saver = create_collect_policy_saver(agent)
 
 if not mljit_superpmi.mldump_file_exists():
     print('[mljit] Producing mldump.txt...')
-    mljit_superpmi.produce_mldump_file()
+    mljit_superpmi.produce_mldump_file(corpus_file_path)
     print('[mljit] Finished producing mldump.txt')
 
-methodsWithCse = mljit_superpmi.parse_mldump_file_filter_cse()
+def filter_cse_methods(m):
+    if m.numCse > 0:
+        return True and m.is_valid
+    else:
+        return False
+methodsWithCse = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)
 
 print(f'[mljit] Number of methods with a CSE: {len(methodsWithCse)}')
 
