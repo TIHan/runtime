@@ -527,7 +527,7 @@ save_policy(policy_saver, saved_policy_path)
 save_policy(collect_policy_saver, saved_collect_policy_path)
 
 num_runs = 1
-spmi_indices = [1318 for _ in range(5000)] #list(map(lambda x: x.spmi, methodsWithCse))
+spmi_indices = list(map(lambda x: x.spmi, methodsWithCse)) # [1318 for _ in range(5000)]
 for _ in range(num_runs):
     sequence_examples = superpmi_collect_data(spmi_indices)
     print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}')
