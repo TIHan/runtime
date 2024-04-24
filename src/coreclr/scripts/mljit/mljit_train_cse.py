@@ -502,7 +502,7 @@ def save_policy(policy_saver, path):
     policy_saver.save(path)
     print(f"[mljit] Saved policy in '{path}'!")
 
-def superpmi_collect_data(spmi_indices):
+def superpmi_collect_data(corpus_file_path, spmi_indices):
     data = mljit_superpmi.collect_data(corpus_file_path, spmi_indices)
     data_logs = flatten(map(lambda x: x.log, data))
     print('[mljit] Creating sequence examples...')
@@ -535,7 +535,7 @@ save_policy(collect_policy_saver, saved_collect_policy_path)
 num_runs = 1
 spmi_indices = list(map(lambda x: x.spmi, methodsWithCse)) # [1318 for _ in range(5000)]
 for _ in range(num_runs):
-    sequence_examples = superpmi_collect_data(spmi_indices)
+    sequence_examples = superpmi_collect_data(corpus_file_path, spmi_indices)
     print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}')
     train(agent, sequence_examples)
     save_policy(collect_policy_saver, saved_collect_policy_path)
