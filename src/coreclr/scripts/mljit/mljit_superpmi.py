@@ -258,7 +258,7 @@ def superpmi_jit(superpmi_process, spmi_index, train_kind, cse_replay_seqs):
     if cse_replay_seqs:
         cse_replay_seqs_option = f'!JitReplayCSE=\"{cse_replay_seqs}\"'.replace('[', '').replace(']', '')
     train_option = f'!MLJitTrain={train_kind}'
-    p.stdin.write(f'{spmi_index} !MLJitTrainLogFile={log_file} {cse_replay_seqs_option} {train_option}\n')
+    p.stdin.write(f'{spmi_index} !JITMinOpts=0 !MLJitTrainLogFile={log_file} {cse_replay_seqs_option} {train_option}\n')
     try:
         line = ''
         try:
@@ -307,9 +307,17 @@ def superpmi_get_next_available_process(superpmi_processes):
 
 # TODO: Add more inputs?
 def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, superpmi_processes):
-    p = None
-
     result = None
+
+    # tmpp = create_superpmi_process(clrjit_dll, corpus_file_path)
+    # #print(f"[mljit] Running isolated SuperPMI process for spmi_index {spmi_index}")
+    # result = superpmi_jit(tmpp, spmi_index, train_kind, cse_replay_seqs)
+    # superpmi_terminate(tmpp)
+    # if result == -1:
+    #     print(f'[mljit] spmi_index {spmi_index} timed out in isolated SuperPMI process.')
+    #     result = None
+
+    p = None
     while p is None:
         (pi, p) = superpmi_get_next_available_process(superpmi_processes)
         (_, _, _, (l, s)) = p
@@ -318,6 +326,9 @@ def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, s
             l.clear()
             try:
                 result = superpmi_jit(p, spmi_index, train_kind, cse_replay_seqs)
+                if result is not None:
+                    if result.spmi_index != spmi_index:
+                        print(f'[mljit] ERROR: spmi_index does not match')
                 if result == -1:
                     print(f'[mljit] spmi_index {spmi_index} timed out. Terminating SuperPMI process...')
                     superpmi_terminate(p)

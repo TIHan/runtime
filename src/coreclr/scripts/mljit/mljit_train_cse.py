@@ -440,6 +440,7 @@ def parse(serialized_proto):
           serialized_proto,
           context_features=context_features,
           sequence_features=sequence_features)
+
       # TODO(yundi): make the transformed reward configurable.
       action = parsed_sequence[action_spec.name]
       reward = tf.cast(parsed_sequence[time_step_spec.reward.name],
@@ -447,7 +448,7 @@ def parse(serialized_proto):
 
       policy_info = process_parsed_sequence_and_get_policy_info(
           parsed_sequence)
-
+      
       del parsed_sequence[time_step_spec.reward.name]
       del parsed_sequence[action_spec.name]
       full_trajectory = trajectory.from_episode(
@@ -460,9 +461,9 @@ def parse(serialized_proto):
 # ---------------------------------------
 
 # Settings from MLGO.
-num_iterations                 = 300
+num_iterations                 = 1 # 300
 batch_size                     = 256
-train_sequence_length          = 16 # We have to have 2 or more for PPOAgent to work.
+train_sequence_length          = 8 # We have to have 2 or more for PPOAgent to work. # 16
 trajectory_shuffle_buffer_size = 1024
 
 def compute_dataset(sequence_examples):
@@ -539,10 +540,10 @@ def superpmi_collect_data(corpus_file_path, spmi_indices):
             item = data[0]
             for i in range(len(data_random)):
                 item_random = data_random[i]
-                if item_random.perfScore > item.perfScore:
+                if item_random.codeSize > item.codeSize:
                     for x in item_random.log:
                         x.reward = -1.0
-                elif item_random.perfScore < item.perfScore:
+                elif item_random.codeSize < item.codeSize:
                     for x in item_random.log:
                         x.reward = 1.0
                 else:
@@ -556,16 +557,12 @@ def superpmi_collect_data(corpus_file_path, spmi_indices):
             print(f'[mljit] Skipped training for spmi_index {spmi_index} as there were issues.')
 
         printProgressBar(count, len(spmi_indices))
-        count = count + 1
+        count = count + 1    
 
     print('[mljit] Creating sequence examples...')
     return list(map(create_serialized_sequence_example, acc))
 
 # ---------------------------------------
-
-agent = create_agent()
-policy_saver = create_policy_saver(agent)
-collect_policy_saver = create_collect_policy_saver(agent)
 
 if not mljit_superpmi.mldump_file_exists():
     print('[mljit] Producing mldump.txt...')
@@ -573,26 +570,64 @@ if not mljit_superpmi.mldump_file_exists():
     print('[mljit] Finished producing mldump.txt')
 
 def filter_cse_methods(m):
-    if m.numCse > 0 and m.spmi_index != 245 and m.spmi_index != 462 and m.spmi_index != 514 and m.spmi_index != 686:
+    if m.numCse > 0:
         return True and m.is_valid
     else:
         return False
 methodsWithCse = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)
+indices = list(map(lambda x: x.spmi_index, methodsWithCse))
 
-print(f'[mljit] Number of methods with a CSE: {len(methodsWithCse)}')
+# def filter_bad_index(index):
+#     if index == 245 or index == 462 or index == 514 or index == 686 or index == 1339 or index == 3020 or index == 3589 or index == 3853:
+#         return False
+#     else:
+#         return True
+    
+# indices = list(filter(filter_bad_index, indices[:500]))
+
+baseline = mljit_superpmi.collect_data(corpus_file_path, indices, 0) # baseline
+
+# ---------------------------------------
+
+# Training
+
+agent = create_agent()
+policy_saver = create_policy_saver(agent)
+collect_policy_saver = create_collect_policy_saver(agent)
 
 # Save initial policy.
 save_policy(policy_saver, saved_policy_path)
 save_policy(collect_policy_saver, saved_collect_policy_path)
 
 num_runs = 1
-spmi_indices = list(map(lambda x: x.spmi_index, methodsWithCse))[:500] # [1318 for _ in range(1)]
-
-print('[mljit] Training...')
 for _ in range(num_runs):
-    sequence_examples = superpmi_collect_data(corpus_file_path, spmi_indices)
+    print('[mljit] Training...')
+    sequence_examples = superpmi_collect_data(corpus_file_path, indices)
     print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}')
     train(agent, sequence_examples)
     save_policy(collect_policy_saver, saved_collect_policy_path)
 
 save_policy(policy_saver, saved_policy_path)
+
+# ---------------------------------------
+
+# Compare Results
+
+# baseline_result = mljit_superpmi.collect_data(corpus_file_path, indices, 0) # baseline
+# policy_result = mljit_superpmi.collect_data(corpus_file_path, indices, 2) # policy
+
+# num_improvements = 0
+# num_regressions = 0
+# for i in range(len(baseline_result)):
+#     if policy_result[i].spmi_index == baseline_result[i].spmi_index:
+#         if policy_result[i].codeSize < baseline_result[i].codeSize:
+#             #print(f'spmi_index {policy_result[i].spmi_index}')
+#             #print(f"{policy_result[i].perfScore} is better than {baseline_result[i].perfScore}")          
+#             num_improvements = num_improvements + 1
+#         elif policy_result[i].codeSize > baseline_result[i].codeSize:
+#           #  print(f'spmi_index {policy_result[i].spmi_index}')
+#          #   print(f"{policy_result[i].codeSize} is worse than {baseline_result[i].codeSize}")
+#             num_regressions = num_regressions + 1
+
+# print(f'Improvements: {num_improvements}')
+# print(f'Regressions: {num_regressions}')
