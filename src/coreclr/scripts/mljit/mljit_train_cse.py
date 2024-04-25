@@ -145,12 +145,12 @@ def create_agent():
         dropout_layer_params=None,
         activation_fn=tf.keras.activations.relu)
 
-    critic_network = value_network.ValueNetwork(
-      time_step_spec.observation,
-      preprocessing_layers=preprocessing_layers,
-      preprocessing_combiner=preprocessing_combiner)
+    # critic_network = value_network.ValueNetwork(
+    #   time_step_spec.observation,
+    #   preprocessing_layers=preprocessing_layers,
+    #   preprocessing_combiner=preprocessing_combiner)
 
-    #critic_network = ConstantValueNetwork(time_step_spec.observation)
+    critic_network = ConstantValueNetwork(time_step_spec.observation)
 
     agent = ppo_agent.PPOAgent(
         time_step_spec=time_step_spec,
@@ -461,9 +461,9 @@ def parse(serialized_proto):
 # ---------------------------------------
 
 # Settings from MLGO.
-num_iterations                 = 1 # 300
+num_iterations                 = 300
 batch_size                     = 256
-train_sequence_length          = 8 # We have to have 2 or more for PPOAgent to work. # 16
+train_sequence_length          = 16 # We have to have 2 or more for PPOAgent to work.
 trajectory_shuffle_buffer_size = 1024
 
 def compute_dataset(sequence_examples):
@@ -490,7 +490,7 @@ def train(agent, sequence_examples):
 
             agent.train(experience)
     else:
-       logging.warning('No data to train from collection.')
+       logging.warning('No sequence examples were found to train.')
 
 def create_policy_saver(agent):
     return PolicySaver(agent.policy, batch_size=1, use_nest_path_signatures=False)
@@ -503,7 +503,7 @@ def save_policy(policy_saver, path):
     policy_saver.save(path)
     print(f"[mljit] Saved policy in '{path}'!")
 
-def superpmi_collect_data(corpus_file_path, spmi_indices):
+def superpmi_collect_data(corpus_file_path, baseline):
 
     # From https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters
     # Print iterations progress
@@ -531,33 +531,32 @@ def superpmi_collect_data(corpus_file_path, spmi_indices):
     count = 0
     acc = []
 
-    for spmi_index in spmi_indices:
-        data = mljit_superpmi.collect_data(corpus_file_path, [spmi_index], 0) # baseline
+    indices = list(map(lambda x: x.spmi_index, baseline))
 
-        if data:
-            data_random = mljit_superpmi.collect_data(corpus_file_path, [spmi_index for _ in range(25)], 1) # random exploration
+    indices = flatten([indices for _ in range(25)])
+    data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=1) # random exploration
 
-            item = data[0]
-            for i in range(len(data_random)):
-                item_random = data_random[i]
-                if item_random.codeSize > item.codeSize:
+    for item in baseline:
+        spmi_index = item.spmi_index
+        
+      #  indices = [spmi_index for _ in range(25)]
+      #  data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=1) # random exploration
+
+        for item_random in data_random:
+            if item_random.spmi_index == spmi_index:
+                if item_random.perfScore > item.perfScore:
                     for x in item_random.log:
                         x.reward = -1.0
-                elif item_random.codeSize < item.codeSize:
+                elif item_random.perfScore < item.perfScore:
                     for x in item_random.log:
                         x.reward = 1.0
                 else:
                     for x in item_random.log:
                         x.reward = 0.0
-                
-            data_random_logs = flatten(map(lambda x: x.log, data_random))
-
-            acc = acc + data_random_logs
-        else:
-            print(f'[mljit] Skipped training for spmi_index {spmi_index} as there were issues.')
-
-        printProgressBar(count, len(spmi_indices))
-        count = count + 1    
+                    
+                acc = acc + item_random.log
+        count = count + 1
+        printProgressBar(count, len(baseline))
 
     print('[mljit] Creating sequence examples...')
     return list(map(create_serialized_sequence_example, acc))
@@ -574,18 +573,8 @@ def filter_cse_methods(m):
         return True and m.is_valid
     else:
         return False
-methodsWithCse = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)
-indices = list(map(lambda x: x.spmi_index, methodsWithCse))
-
-# def filter_bad_index(index):
-#     if index == 245 or index == 462 or index == 514 or index == 686 or index == 1339 or index == 3020 or index == 3589 or index == 3853:
-#         return False
-#     else:
-#         return True
     
-# indices = list(filter(filter_bad_index, indices[:500]))
-
-baseline = mljit_superpmi.collect_data(corpus_file_path, indices, 0) # baseline
+baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:50]
 
 # ---------------------------------------
 
@@ -596,38 +585,32 @@ policy_saver = create_policy_saver(agent)
 collect_policy_saver = create_collect_policy_saver(agent)
 
 # Save initial policy.
-save_policy(policy_saver, saved_policy_path)
 save_policy(collect_policy_saver, saved_collect_policy_path)
+save_policy(policy_saver, saved_policy_path)
 
-num_runs = 1
-for _ in range(num_runs):
-    print('[mljit] Training...')
-    sequence_examples = superpmi_collect_data(corpus_file_path, indices)
-    print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}')
-    train(agent, sequence_examples)
-    save_policy(collect_policy_saver, saved_collect_policy_path)
-
+print('[mljit] Collecting data...')
+sequence_examples = superpmi_collect_data(corpus_file_path, baseline)
+print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}...')
+train(agent, sequence_examples)
+save_policy(collect_policy_saver, saved_collect_policy_path)
 save_policy(policy_saver, saved_policy_path)
 
 # ---------------------------------------
 
 # Compare Results
 
-# baseline_result = mljit_superpmi.collect_data(corpus_file_path, indices, 0) # baseline
-# policy_result = mljit_superpmi.collect_data(corpus_file_path, indices, 2) # policy
+print('[mljit] Comparing results...')
+indices = list(map(lambda x: x.spmi_index, baseline))
+policy_result = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=2) # policy
 
-# num_improvements = 0
-# num_regressions = 0
-# for i in range(len(baseline_result)):
-#     if policy_result[i].spmi_index == baseline_result[i].spmi_index:
-#         if policy_result[i].codeSize < baseline_result[i].codeSize:
-#             #print(f'spmi_index {policy_result[i].spmi_index}')
-#             #print(f"{policy_result[i].perfScore} is better than {baseline_result[i].perfScore}")          
-#             num_improvements = num_improvements + 1
-#         elif policy_result[i].codeSize > baseline_result[i].codeSize:
-#           #  print(f'spmi_index {policy_result[i].spmi_index}')
-#          #   print(f"{policy_result[i].codeSize} is worse than {baseline_result[i].codeSize}")
-#             num_regressions = num_regressions + 1
+num_improvements = 0
+num_regressions = 0
+for i in range(len(policy_result)):
+    if policy_result[i].spmi_index == baseline[i].spmi_index:
+        if policy_result[i].perfScore < baseline[i].perfScore:       
+            num_improvements = num_improvements + 1
+        elif policy_result[i].perfScore > baseline[i].perfScore:
+            num_regressions = num_regressions + 1
 
-# print(f'Improvements: {num_improvements}')
-# print(f'Regressions: {num_regressions}')
+print(f'Improvements: {num_improvements}')
+print(f'Regressions: {num_regressions}')

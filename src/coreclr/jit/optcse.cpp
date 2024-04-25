@@ -144,9 +144,7 @@ bool run_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
     {
         mljit_policy_set_cse_inputs(currentPolicy, compiler, minCseCost, cse);
         currentPolicy->Action();
-        bool cseDecision = currentPolicy->GetOutput_cse_decision();
-        currentPolicy->LogAction();
-        return cseDecision;
+        return currentPolicy->GetOutput_cse_decision();
     }
     return false;
 }
@@ -159,23 +157,20 @@ bool run_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
         mljit_policy_set_cse_inputs(currentCollectPolicy, compiler, minCseCost, cse);
         currentCollectPolicy->Action();
         bool cseDecision = currentCollectPolicy->GetOutput_cse_decision();
-        currentCollectPolicy->LogAction();
+        currentCollectPolicy->LogInputsAndOutputs();
         return cseDecision;
     }
     return false;
 }
 
-// For ML training.
+// For ML training. Does not execute the policy. Just sets the inputs and outputs for logging.
 void log_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse, bool didCse)
 {
     if (currentCollectPolicy)
     {
         mljit_policy_set_cse_inputs(currentCollectPolicy, compiler, minCseCost, cse);
-        currentCollectPolicy->Action();
-        // Force set the output so we can log it.
         currentCollectPolicy->SetOutput_cse_decision(didCse);
-        //  bool cseDecision = currentCollectPolicy->GetOutput_cse_decision();
-        currentCollectPolicy->LogAction();
+        currentCollectPolicy->LogInputsAndOutputs();
     }
 }
 #endif // DEBUG
@@ -5584,11 +5579,9 @@ void Compiler::optOptimizeCSEs()
 {
 #if DEBUG
     // Create it once.
-    static MLJIT_CsePolicy* policy =
-        mljit_try_create_cse_policy(getenv("DOTNET_MLJitSavedPolicyPath"));
+    static MLJIT_CsePolicy* policy = mljit_try_create_cse_policy();
     // Create it once.
-    static MLJIT_CseCollectPolicy* collectPolicy =
-        mljit_try_create_cse_collect_policy(getenv("DOTNET_MLJitSavedCollectPolicyPath"));
+    static MLJIT_CseCollectPolicy* collectPolicy = mljit_try_create_cse_collect_policy();
 
     currentPolicy = policy;
     currentCollectPolicy = collectPolicy;

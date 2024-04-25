@@ -285,8 +285,14 @@ void mljit_add_cse_policy_inputs(
                                                                                     "action_discount", TF_FLOAT);
 }
 
-MLJIT_CsePolicy* mljit_try_create_cse_policy(const char* savedPolicyDir)
+MLJIT_CsePolicy* mljit_try_create_cse_policy()
 {
+    const char* mljitEnabled = getenv("DOTNET_MLJitEnabled");
+    if (!mljitEnabled || (strcmp(mljitEnabled, "1") != 0))
+        return nullptr;
+
+    const char* savedPolicyDir = getenv("DOTNET_MLJitSavedPolicyPath");
+
     if (!savedPolicyDir)
         return nullptr;
 
@@ -351,8 +357,14 @@ MLJIT_CsePolicy* mljit_try_create_cse_policy(const char* savedPolicyDir)
     return policy;
 }
 
-MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy(const char* savedPolicyDir)
+MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy()
 {
+    const char* mljitEnabled = getenv("DOTNET_MLJitEnabled");
+    if (!mljitEnabled || (strcmp(mljitEnabled, "1") != 0))
+        return nullptr;
+
+    const char* savedPolicyDir = getenv("DOTNET_MLJitSavedCollectPolicyPath");
+
     if (!savedPolicyDir)
         return nullptr;
 

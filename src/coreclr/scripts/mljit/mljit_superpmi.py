@@ -66,7 +66,7 @@ class ReturnValueThread(threading.Thread):
 
 # --------------------------------------------------------------------------------
 
-superpmi_process_count = int(os.cpu_count() / 2) # divide by 2 because of hyper-threading.
+superpmi_process_count = 1#int(os.cpu_count() / 2) # divide by 2 because of hyper-threading.
 
 @dataclass
 class Method:
@@ -83,7 +83,7 @@ class Method:
     codeSize: float
     log: any
 
-def create_superpmi_process(clrjit_dll_path, mch_path):
+def create_superpmi_process(clrjit_dll_path, mch_path, mljit_enabled):
     l = threading.Event()
     l.set()
     s = threading.Semaphore()
@@ -95,8 +95,11 @@ def create_superpmi_process(clrjit_dll_path, mch_path):
     # Any errors will still be printed though.
     superpmi_env['TF_ENABLE_ONEDNN_OPTS'] = "0"
     superpmi_env['TF_CPP_MIN_LOG_LEVEL'] = "3"
-    superpmi_env['DOTNET_MLJitSavedPolicyPath'] = os.environ['DOTNET_MLJitSavedPolicyPath']
-    superpmi_env['DOTNET_MLJitSavedCollectPolicyPath'] = os.environ['DOTNET_MLJitSavedCollectPolicyPath']
+
+    if mljit_enabled:
+        superpmi_env['DOTNET_MLJitEnabled'] = "1"
+        superpmi_env['DOTNET_MLJitSavedPolicyPath'] = os.environ['DOTNET_MLJitSavedPolicyPath']
+        superpmi_env['DOTNET_MLJitSavedCollectPolicyPath'] = os.environ['DOTNET_MLJitSavedCollectPolicyPath']
 
     superpmi_args = [
             superpmi_exe, 
@@ -132,15 +135,15 @@ def create_superpmi_process(clrjit_dll_path, mch_path):
 
     return (p, t, q, (l, s))
 
-def create_many_superpmi_processes(clrjit_dll_path, mch_path):
-    return [create_superpmi_process(clrjit_dll_path, mch_path) for x in range(superpmi_process_count)]
+def create_many_superpmi_processes(clrjit_dll_path, mch_path, mljit_enabled):
+    return [create_superpmi_process(clrjit_dll_path, mch_path, mljit_enabled) for x in range(superpmi_process_count)]
 
 # not used, but useful for getting a complete list of results from JITted functions.
 def produce_mldump_file(corpus_file_path):
     run(f"{superpmi_exe} -jitoption JitStdOutFile={mldump_txt} -jitoption JitMetrics=1 {clrjit_dll} {corpus_file_path}")
 
 def mldump_file_exists():
-    return os.path.exists(mldump_txt)
+    return os.path.isfile(mldump_txt)
 
 def parse_mldump_line(line):
     perfScorePattern        = regex('(PerfScore|perf score) (\d+(\.\d+)?)', line, 2)
@@ -246,7 +249,7 @@ def parse_log_file(spmi_index, path):
         f.close()
         return data
     except Exception as error:
-        print(f'There was an error when parsing the training log file from the JIT output on spmi_index {spmi_index}:\n{error}')
+        print(f'[mlji] ERROR: There was an error when parsing the training log file from the JIT output on spmi_index {spmi_index}:\n{error}')
         return []
 
 # --------------------------------------------------------------------------------
@@ -258,7 +261,7 @@ def superpmi_jit(superpmi_process, spmi_index, train_kind, cse_replay_seqs):
     if cse_replay_seqs:
         cse_replay_seqs_option = f'!JitReplayCSE=\"{cse_replay_seqs}\"'.replace('[', '').replace(']', '')
     train_option = f'!MLJitTrain={train_kind}'
-    p.stdin.write(f'{spmi_index} !JITMinOpts=0 !MLJitTrainLogFile={log_file} {cse_replay_seqs_option} {train_option}\n')
+    p.stdin.write(f'{spmi_index} !MLJitTrainLogFile={log_file} {cse_replay_seqs_option} {train_option}\n')
     try:
         line = ''
         try:
@@ -268,14 +271,18 @@ def superpmi_jit(superpmi_process, spmi_index, train_kind, cse_replay_seqs):
 
         meth = parse_mldump_line(line)
         if meth.is_valid:
-            meth.log = parse_log_file(spmi_index, log_file)
-            if meth.numCse > 0 and not meth.log:
-                print(f'Expected log info of CSEs for spmi_index {spmi_index}')
+            if train_kind != 2 and train_kind != None: # train_kind 2 means run the final policy, we do not expect a log file.
+                if os.path.isfile(log_file):
+                    meth.log = parse_log_file(spmi_index, log_file)
+                    if meth.numCse > 0 and not meth.log:
+                        print(f'[mljit] WARNING: Expected log info of CSEs for spmi_index {spmi_index}')
+                else:
+                    print(f'[mljit] WARNING: Training log file not found for spmi_index {spmi_index}')
         else:
-            print(f'Could not parse the metrics line on spmi_index {spmi_index}. Line: {line}')
+            print(f'[mljit] ERROR: Could not parse the metrics line on spmi_index {spmi_index}. Line: {line}')
         return meth
     except Exception as error:
-        print(f'There was an error when parsing the JIT output on spmi_index {spmi_index}:\n{error}')
+        print(f'[mljit] ERROR: There was an error when parsing the JIT output on spmi_index {spmi_index}:\n{error}')
         return None
     finally:
         try:
@@ -305,17 +312,8 @@ def superpmi_get_next_available_process(superpmi_processes):
 
 # --------------------------------------------------------------------------------
 
-# TODO: Add more inputs?
 def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, superpmi_processes):
     result = None
-
-    # tmpp = create_superpmi_process(clrjit_dll, corpus_file_path)
-    # #print(f"[mljit] Running isolated SuperPMI process for spmi_index {spmi_index}")
-    # result = superpmi_jit(tmpp, spmi_index, train_kind, cse_replay_seqs)
-    # superpmi_terminate(tmpp)
-    # if result == -1:
-    #     print(f'[mljit] spmi_index {spmi_index} timed out in isolated SuperPMI process.')
-    #     result = None
 
     p = None
     while p is None:
@@ -326,24 +324,24 @@ def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, s
             l.clear()
             try:
                 result = superpmi_jit(p, spmi_index, train_kind, cse_replay_seqs)
-                if result is not None:
-                    if result.spmi_index != spmi_index:
-                        print(f'[mljit] ERROR: spmi_index does not match')
                 if result == -1:
-                    print(f'[mljit] spmi_index {spmi_index} timed out. Terminating SuperPMI process...')
+                    print(f'[mljit] WARNING: spmi_index {spmi_index} timed out. Terminating SuperPMI process...')
                     superpmi_terminate(p)
                     print("[mljit] Creating new SuperPMI process...")
-                    superpmi_processes[pi] = create_superpmi_process(clrjit_dll, corpus_file_path)
+                    superpmi_processes[pi] = create_superpmi_process(clrjit_dll, corpus_file_path, train_kind != None)
 
-                    tmpp = create_superpmi_process(clrjit_dll, corpus_file_path)
+                    tmpp = create_superpmi_process(clrjit_dll, corpus_file_path, train_kind != None)
 
                     print(f"[mljit] Running isolated SuperPMI process for spmi_index {spmi_index}")
                     result = superpmi_jit(tmpp, spmi_index, train_kind, cse_replay_seqs)
                     superpmi_terminate(tmpp)
                     if result == -1:
-                        print(f'[mljit] spmi_index {spmi_index} timed out in isolated SuperPMI process.')
+                        print(f'[mljit] WARNING: spmi_index {spmi_index} timed out in isolated SuperPMI process.')
                         result = None
                     p = -1
+                if result is not None:
+                    if result.spmi_index != spmi_index:
+                        print(f'[mljit] ERROR: spmi_index does not match')
             finally:
                 l.set()
                 s.release()
@@ -351,13 +349,13 @@ def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, s
     return result
 
 # --------------------------------------------------------------------------------
-def collect_data(corpus_file_path, spmi_methods, train_kind, verbose_log=False):
+def collect_data(corpus_file_path, spmi_methods, train_kind=None, verbose_log=False):
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=superpmi_process_count) as executor:
         def create_jit_task(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs):
             return executor.submit(jit, clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, superpmi_processes)
 
-        superpmi_processes = create_many_superpmi_processes(clrjit_dll, corpus_file_path)
+        superpmi_processes = create_many_superpmi_processes(clrjit_dll, corpus_file_path, train_kind != None)
 
         if verbose_log:
             print("[mljit] Collecting data...")
@@ -375,7 +373,8 @@ def collect_data(corpus_file_path, spmi_methods, train_kind, verbose_log=False):
         def eval(task):
             try:
                 return task.result()
-            except Exception:
+            except Exception as error:
+                print(f"[mljit] ERROR: Unable to get result due to:\n{error}")
                 return None
         results = list(filter(lambda x: x is not None, map(eval, tasks)))
 

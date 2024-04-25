@@ -133,7 +133,7 @@ public:
         loggedActionCount = 0;
     }
 
-    void LogAction()
+    void LogInputsAndOutputs()
     {
         MLJIT_CseActionLogItem l = {};
         MLJIT_RECORD_INPUT(cse_cost_ex);
@@ -259,8 +259,8 @@ public:
     }
 };
 
-MLJIT_CsePolicy* mljit_try_create_cse_policy(const char* savedPolicyDir);
-MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy(const char* savedPolicyDir);
+MLJIT_CsePolicy* mljit_try_create_cse_policy();
+MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy();
 void mljit_destroy_policy(MLJIT_Policy* mljitSession);
 
 #endif // DEBUG
