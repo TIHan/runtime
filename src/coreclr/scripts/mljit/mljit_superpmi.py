@@ -66,7 +66,7 @@ class ReturnValueThread(threading.Thread):
 
 # --------------------------------------------------------------------------------
 
-superpmi_process_count = 1#int(os.cpu_count() / 2) # divide by 2 because of hyper-threading.
+superpmi_process_count = int(os.cpu_count() / 2) # divide by 2 because of hyper-threading.
 
 @dataclass
 class Method:

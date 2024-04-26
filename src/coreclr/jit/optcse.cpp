@@ -124,8 +124,8 @@ void mljit_policy_set_cse_inputs(MLJIT_CsePolicyBase* policy, Compiler* compiler
     policy->SetInput_cse_num_distinct_locals(cse->numDistinctLocals);
     policy->SetInput_cse_num_local_occurrences(cse->numLocalOccurrences);
     policy->SetInput_cse_has_call((cse->csdTree->gtFlags & GTF_CALL) != 0);
-    policy->SetInput_log_cse_use_count_weighted_times_cost_ex((float)(deMinimusAdj +
-                                                              log(max(deMinimis, cse->csdUseCount * cse->csdUseWtCnt))));
+    policy->SetInput_log_cse_use_count_weighted_times_cost_ex(
+        (float)(deMinimusAdj + log(max(deMinimis, cse->csdUseCount * cse->csdUseWtCnt))));
     policy->SetInput_log_cse_use_count_weighted_times_num_local_occurrences(
         (float)(deMinimusAdj + log(max(deMinimis, cse->numLocalOccurrences * cse->csdUseWtCnt))));
     policy->SetInput_cse_distance((float)(/* booleanScale */ 5 * ((double)(blockSpread) / numBBs)));

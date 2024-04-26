@@ -6,6 +6,7 @@ import statistics
 import tensorflow as tf
 import json
 import mljit_superpmi
+from dataclasses import dataclass
 from typing import Any, List, Sequence, Tuple, Callable, Optional, Dict
 from types import SimpleNamespace
 from tf_agents.specs import tensor_spec, array_spec
@@ -133,7 +134,7 @@ action_spec = tensor_spec.BoundedTensorSpec(
 
 preprocessing_combiner = tf.keras.layers.Add()
 
-def create_agent():
+def create_agent(num_epochs):
     actor_network = actor_distribution_network.ActorDistributionNetwork(
         input_tensor_spec=time_step_spec.observation,
         output_tensor_spec=action_spec,
@@ -168,7 +169,7 @@ def create_agent():
         value_function_l2_reg=0.0,
         shared_vars_l2_reg=0.0,
         value_pred_loss_coef=0.0,
-        num_epochs=1,
+        num_epochs=num_epochs,
         use_gae=False,
         use_td_lambda_return=False,
         normalize_rewards=False,
@@ -460,7 +461,11 @@ def parse(serialized_proto):
     
 # ---------------------------------------
 
-# Settings from MLGO.
+global_step = tf.compat.v1.train.get_or_create_global_step()
+
+num_explorations               = 100
+num_epochs                     = 10
+num_policy_iterations          = 100
 num_iterations                 = 300
 batch_size                     = 256
 train_sequence_length          = 16 # We have to have 2 or more for PPOAgent to work.
@@ -475,20 +480,22 @@ def create_dataset_iter(sequence_examples):
 # Majority of this is from MLGO.
 def train(agent, sequence_examples):
     if sequence_examples:
-        dataset_iter = create_dataset_iter(sequence_examples)
-        for _ in range(num_iterations):
-            # When the data is not enough to fill in a batch, next(dataset_iter)
-            # will throw StopIteration exception, logging a warning message instead
-            # of killing the training when it happens.
-            try:
-                experience = next(dataset_iter)
-            except StopIteration:
-                logging.warning(
-                    ('Skipped training because do not have enough data to fill '
-                    'in a batch, consider increase data or reduce batch size.'))
-                break
+        with tf.summary.record_if(lambda: tf.math.equal(
+            global_step % 1000, 0)):
+            dataset_iter = create_dataset_iter(sequence_examples)
+            for _ in range(num_iterations):
+                # When the data is not enough to fill in a batch, next(dataset_iter)
+                # will throw StopIteration exception, logging a warning message instead
+                # of killing the training when it happens.
+                try:
+                    experience = next(dataset_iter)
+                except StopIteration:
+                    logging.warning(
+                        ('Skipped training because do not have enough data to fill '
+                        'in a batch, consider increase data or reduce batch size.'))
+                    break
 
-            agent.train(experience)
+                agent.train(experience)
     else:
        logging.warning('No sequence examples were found to train.')
 
@@ -502,6 +509,37 @@ def save_policy(policy_saver, path):
     print(f"[mljit] Saving policy in '{path}'...")
     policy_saver.save(path)
     print(f"[mljit] Saved policy in '{path}'!")
+
+
+@dataclass
+class LogItem:
+    cse_cost_ex: any 
+    cse_use_count_weighted_log: any 
+    cse_def_count_weighted_log: any 
+    cse_cost_sz: any 
+    cse_use_count: any 
+    cse_def_count: any 
+    cse_is_live_across_call: any  
+    cse_is_int: any 
+    cse_is_constant_not_shared: any  
+    cse_is_shared_constant: any 
+    cse_cost_is_MIN_CSE_COST: any 
+    cse_is_constant_live_across_call: any  
+    cse_is_constant_min_cost: any 
+    cse_cost_is_MIN_CSE_COST_live_across_call: any  
+    cse_is_GTF_MAKE_CSE: any 
+    cse_num_distinct_locals: any 
+    cse_num_local_occurrences: any 
+    cse_has_call: any 
+    log_cse_use_count_weighted_times_cost_ex: any 
+    log_cse_use_count_weighted_times_num_local_occurrences: any 
+    cse_distance: any  
+    cse_is_containable: any 
+    cse_is_cheap_containable: any 
+    cse_is_live_across_call_in_LSRA_ordering: any 
+    log_pressure_estimated_weight: any 
+    cse_decision: any 
+    reward: any 
 
 def superpmi_collect_data(corpus_file_path, baseline):
 
@@ -533,14 +571,14 @@ def superpmi_collect_data(corpus_file_path, baseline):
 
     indices = list(map(lambda x: x.spmi_index, baseline))
 
-    indices = flatten([indices for _ in range(25)])
+    indices = flatten([indices for _ in range(num_explorations)])
     data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=1) # random exploration
 
     for item in baseline:
         spmi_index = item.spmi_index
         
-      #  indices = [spmi_index for _ in range(25)]
-      #  data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=1) # random exploration
+        # indices = [spmi_index for _ in range(num_explorations)]
+        # data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=1) # random exploration
 
         for item_random in data_random:
             if item_random.spmi_index == spmi_index:
@@ -553,8 +591,19 @@ def superpmi_collect_data(corpus_file_path, baseline):
                 else:
                     for x in item_random.log:
                         x.reward = 0.0
+
+                # diff = train_sequence_length - len(item_random.log)
+
+                # if diff < 0:
+                #     print("Need a bigger sequence length")
+
+                log_items = item_random.log
+
+                # for _ in range(diff):
+                #     dummy_log_item = LogItem(cse_cost_ex=0.0, cse_use_count_weighted_log=0.0, cse_def_count_weighted_log=0.0, cse_cost_sz=0, cse_use_count=0, cse_def_count=0, cse_is_live_across_call=0, cse_is_int=0, cse_is_constant_not_shared=1, cse_is_shared_constant=0, cse_cost_is_MIN_CSE_COST=0, cse_is_constant_live_across_call=0, cse_is_constant_min_cost=0, cse_cost_is_MIN_CSE_COST_live_across_call=0, cse_is_GTF_MAKE_CSE=0, cse_num_distinct_locals=0, cse_num_local_occurrences=0, cse_has_call=0, log_cse_use_count_weighted_times_cost_ex=0.0, log_cse_use_count_weighted_times_num_local_occurrences=0.0, cse_distance=0.0, cse_is_containable=0, cse_is_cheap_containable=0, cse_is_live_across_call_in_LSRA_ordering=0, log_pressure_estimated_weight=0, cse_decision=0, reward=0)
+                #     log_items = log_items + [dummy_log_item]
                     
-                acc = acc + item_random.log
+                acc = acc + log_items
         count = count + 1
         printProgressBar(count, len(baseline))
 
@@ -574,13 +623,13 @@ def filter_cse_methods(m):
     else:
         return False
     
-baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:50]
+baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:500]
 
 # ---------------------------------------
 
 # Training
 
-agent = create_agent()
+agent = create_agent(num_epochs)
 policy_saver = create_policy_saver(agent)
 collect_policy_saver = create_collect_policy_saver(agent)
 
@@ -588,11 +637,14 @@ collect_policy_saver = create_collect_policy_saver(agent)
 save_policy(collect_policy_saver, saved_collect_policy_path)
 save_policy(policy_saver, saved_policy_path)
 
-print('[mljit] Collecting data...')
-sequence_examples = superpmi_collect_data(corpus_file_path, baseline)
-print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}...')
-train(agent, sequence_examples)
-save_policy(collect_policy_saver, saved_collect_policy_path)
+print(f'[mljit] Current step: {global_step.numpy()}')
+while (global_step.numpy() < (num_policy_iterations * num_iterations)):
+    print('[mljit] Collecting data...')
+    sequence_examples = superpmi_collect_data(corpus_file_path, baseline)
+    print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}...')
+    train(agent, sequence_examples)
+    save_policy(collect_policy_saver, saved_collect_policy_path)
+    print(f'[mljit] Episode complete at step {global_step.numpy()}')
 save_policy(policy_saver, saved_policy_path)
 
 # ---------------------------------------
