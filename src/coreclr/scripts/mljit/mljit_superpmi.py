@@ -349,6 +349,7 @@ def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, s
     return result
 
 # --------------------------------------------------------------------------------
+# 'train_kind' correpsonds to 'DOTNET_MLJitTrain'
 def collect_data(corpus_file_path, spmi_methods, train_kind=None, verbose_log=False):
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=superpmi_process_count) as executor:

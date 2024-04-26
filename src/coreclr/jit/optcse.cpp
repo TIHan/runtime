@@ -5187,14 +5187,15 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         CSE_Candidate candidate(this, dsc);
 
 #ifdef DEBUG
+        bool mljitEnabled = JitConfig.MLJitEnabled() == 1;
         int mltrain = JitConfig.MLJitTrain();
-        if ((mltrain == 0) && !dsc->IsViable())
+        if ((!mljitEnabled || (mltrain == 0)) && !dsc->IsViable())
 #else  // DEBUG
         if (!dsc->IsViable())
 #endif // !DEBUG
         {
 #ifdef DEBUG
-            if (mltrain == 0)
+            if (mljitEnabled && (mltrain == 0))
             {
                 log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), false);
             }
@@ -5228,11 +5229,11 @@ void CSE_HeuristicCommon::ConsiderCandidates()
 
 #ifdef DEBUG
         bool doCSE = false;
-        if (mltrain == 1)
+        if (mljitEnabled && (mltrain == 1))
         {
             doCSE = run_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
         }
-        else if (mltrain == 2)
+        else if (mljitEnabled && (mltrain == 2))
         {
             doCSE = run_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
         }
@@ -5287,7 +5288,7 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         }
 
 #ifdef DEBUG
-        if (mltrain == 0)
+        if (mljitEnabled && (mltrain == 0))
         {
             log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), doCSE);
         }
@@ -5585,6 +5586,31 @@ void Compiler::optOptimizeCSEs()
     // Create it once.
     static MLJIT_CseCollectPolicy* collectPolicy = mljit_try_create_cse_collect_policy();
 
+    // FIXME: Creating/destroying policies isn't thread-safe, but training/executing policies is normally done in SuperPMI
+    // streaming mode which is only single-threaded; therefore, this is "ok" for now.
+    if (JitConfig.MLJitEnabled() == 1)
+    {
+        if (!policy)
+            policy = mljit_try_create_cse_policy();
+
+        if (!collectPolicy)
+            collectPolicy = mljit_try_create_cse_collect_policy();
+    }
+    else
+    {
+        if (policy)
+        {
+            mljit_destroy_policy(policy);
+            policy = nullptr;
+        }
+
+        if (collectPolicy)
+        {
+            mljit_destroy_policy(collectPolicy);
+            collectPolicy = nullptr;
+        }
+    }
+
     currentPolicy = policy;
     currentCollectPolicy = collectPolicy;
 
@@ -5610,7 +5636,7 @@ void Compiler::optOptimizeCSEs()
 
 #if DEBUG
     int mltrain = JitConfig.MLJitTrain();
-    if (collectPolicy && (mltrain == 0) || (mltrain == 1))
+    if (collectPolicy && ((mltrain == 0) || (mltrain == 1)))
     {
         auto path = JitConfig.MLJitTrainLogFile();
         if (path)
