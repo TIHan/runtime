@@ -610,7 +610,7 @@ if not mljit_superpmi.mldump_file_exists():
     print('[mljit] Finished producing mldump.txt')
 
 def filter_cse_methods(m):
-    if m.numCse > 0 and m.spmi_index != 245:
+    if m.numCse > 0:
         return True and m.is_valid
     else:
         return False
