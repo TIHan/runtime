@@ -77,6 +77,15 @@ DOTNET_MLJitLogPath=C:\work\mljit
     - Training will commence, it shouldn't take very long given we are only using 50 methods.
     - Once training is complete, it will then compare results from the baseline to see how many improvements and regressions were made from the final policy.
 
+## Oustanding Questions
+
+Training doesn't work as intended. We could try to figure it out if we can answer some of the following questions:
+1. `collect_policy` is used for training, but what does that mean *exactly*?
+2. Why do the policies have a `reward` input? What does that mean and how does it affect training?
+3. Where should the `reward` be calculated?
+4. How do sequences of training logs affect training?
+    - There is nuance to this that I am just not certain of. We store a sequence of training logs into a `tf.data.Dataset` then do some batching/unbatching and shuffling of data on it. This dataset then gets iterated repeatedly for 300 iterations, where each iteration experience is used to train the model. This is what MLGO does.
+
 ## Useful Links
 
 - https://github.com/google/ml-compiler-opt - MLJIT was inspired by MLGO
