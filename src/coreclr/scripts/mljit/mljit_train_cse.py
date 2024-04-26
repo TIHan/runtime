@@ -591,7 +591,6 @@ def superpmi_collect_data(corpus_file_path, baseline):
                 else:
                     for x in item_random.log:
                         x.reward = 0.0
-                    item_random.log = []
 
                 log_items = item_random.log
                     
