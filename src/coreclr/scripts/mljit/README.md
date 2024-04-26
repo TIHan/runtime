@@ -50,7 +50,7 @@ From these steps, you should be able to build the JIT and run the python script 
     - Requires `DOTNET_MLJitLogPath` to be set with a valid path.
     - Example: `DOTNET_MLJitEnabled=1`
 - `DOTNET_MLJitTrain`
-    - When `DOTNET_MLJITEnable=1`, these are the types of ways to execute policies.
+    - When `DOTNET_MLJITEnabled=1`, these are the types of ways to execute policies.
     - Used in the JIT lib, but set in `mljit_superpmi.py`.
     - There are three modes:
         - `0` - Doesn't execute a policy, but records the inputs/outputs of the current CSE heuristic decisions. Requires `DOTNET_MLJitSavedCollectPolicyPath` to be set.
