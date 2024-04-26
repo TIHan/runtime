@@ -144,7 +144,9 @@ bool run_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
     {
         mljit_policy_set_cse_inputs(currentPolicy, compiler, minCseCost, cse);
         currentPolicy->Action();
-        return currentPolicy->GetOutput_cse_decision();
+        bool cseDecision = currentPolicy->GetOutput_cse_decision();
+        currentPolicy->LogInputsAndOutputs();
+        return cseDecision;
     }
     return false;
 }
@@ -5607,12 +5609,21 @@ void Compiler::optOptimizeCSEs()
     optOptimizeValnumCSEs();
 
 #if DEBUG
-    if (collectPolicy)
+    int mltrain = JitConfig.MLJitTrain();
+    if (collectPolicy && (mltrain == 0) || (mltrain == 1))
     {
         auto path = JitConfig.MLJitTrainLogFile();
         if (path)
         {
             collectPolicy->SaveLoggedActionsAsJson(path);
+        }
+    }
+    else if (policy && (mltrain == 2))
+    {
+        auto path = JitConfig.MLJitTrainLogFile();
+        if (path)
+        {
+            policy->SaveLoggedActionsAsJson(path);
         }
     }
 #endif // DEBUG

@@ -271,7 +271,7 @@ def superpmi_jit(superpmi_process, spmi_index, train_kind, cse_replay_seqs):
 
         meth = parse_mldump_line(line)
         if meth.is_valid:
-            if train_kind != 2 and train_kind != None: # train_kind 2 means run the final policy, we do not expect a log file.
+            if train_kind != None:
                 if os.path.isfile(log_file):
                     meth.log = parse_log_file(spmi_index, log_file)
                     if meth.numCse > 0 and not meth.log:

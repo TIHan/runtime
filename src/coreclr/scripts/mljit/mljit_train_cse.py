@@ -464,8 +464,8 @@ def parse(serialized_proto):
 global_step = tf.compat.v1.train.get_or_create_global_step()
 
 num_explorations               = 100
-num_epochs                     = 10
-num_policy_iterations          = 100
+num_epochs                     = 25
+num_policy_iterations          = 3
 num_iterations                 = 300
 batch_size                     = 256
 train_sequence_length          = 16 # We have to have 2 or more for PPOAgent to work.
@@ -591,17 +591,9 @@ def superpmi_collect_data(corpus_file_path, baseline):
                 else:
                     for x in item_random.log:
                         x.reward = 0.0
-
-                # diff = train_sequence_length - len(item_random.log)
-
-                # if diff < 0:
-                #     print("Need a bigger sequence length")
+                    item_random.log = []
 
                 log_items = item_random.log
-
-                # for _ in range(diff):
-                #     dummy_log_item = LogItem(cse_cost_ex=0.0, cse_use_count_weighted_log=0.0, cse_def_count_weighted_log=0.0, cse_cost_sz=0, cse_use_count=0, cse_def_count=0, cse_is_live_across_call=0, cse_is_int=0, cse_is_constant_not_shared=1, cse_is_shared_constant=0, cse_cost_is_MIN_CSE_COST=0, cse_is_constant_live_across_call=0, cse_is_constant_min_cost=0, cse_cost_is_MIN_CSE_COST_live_across_call=0, cse_is_GTF_MAKE_CSE=0, cse_num_distinct_locals=0, cse_num_local_occurrences=0, cse_has_call=0, log_cse_use_count_weighted_times_cost_ex=0.0, log_cse_use_count_weighted_times_num_local_occurrences=0.0, cse_distance=0.0, cse_is_containable=0, cse_is_cheap_containable=0, cse_is_live_across_call_in_LSRA_ordering=0, log_pressure_estimated_weight=0, cse_decision=0, reward=0)
-                #     log_items = log_items + [dummy_log_item]
                     
                 acc = acc + log_items
         count = count + 1
@@ -618,12 +610,12 @@ if not mljit_superpmi.mldump_file_exists():
     print('[mljit] Finished producing mldump.txt')
 
 def filter_cse_methods(m):
-    if m.numCse > 0:
+    if m.numCse > 0 and m.spmi_index != 245:
         return True and m.is_valid
     else:
         return False
     
-baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:500]
+baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:50]
 
 # ---------------------------------------
 
@@ -638,14 +630,15 @@ save_policy(collect_policy_saver, saved_collect_policy_path)
 save_policy(policy_saver, saved_policy_path)
 
 print(f'[mljit] Current step: {global_step.numpy()}')
-while (global_step.numpy() < (num_policy_iterations * num_iterations)):
+#while (global_step.numpy() < (num_policy_iterations * num_iterations)):
+for _ in range(num_policy_iterations):
     print('[mljit] Collecting data...')
     sequence_examples = superpmi_collect_data(corpus_file_path, baseline)
     print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}...')
     train(agent, sequence_examples)
     save_policy(collect_policy_saver, saved_collect_policy_path)
-    print(f'[mljit] Episode complete at step {global_step.numpy()}')
-save_policy(policy_saver, saved_policy_path)
+    save_policy(policy_saver, saved_policy_path)
+    print(f'[mljit] Episode complete at step: {global_step.numpy()}')
 
 # ---------------------------------------
 
