@@ -19,7 +19,7 @@ from tf_agents.networks import network
 from tf_agents.networks import q_rnn_network
 from tf_agents.utils import nest_utils
 from tf_agents.networks import actor_distribution_network, value_network
-from tf_agents.policies import PolicySaver
+from tf_agents.policies import PolicySaver, random_tf_policy
 from tf_agents.utils import common as common_utils
 from absl import logging
 
@@ -142,52 +142,53 @@ def create_agent(num_epochs):
         preprocessing_combiner=preprocessing_combiner,
         
         # Settings below match MLGO, most of the settings are actually the default values of ActorDistributionNetwork.
-        fc_layer_params=(40, 40, 20),
+        # fc_layer_params=(40, 40, 20),
         dropout_layer_params=None,
         activation_fn=tf.keras.activations.relu)
 
-    # critic_network = value_network.ValueNetwork(
-    #   time_step_spec.observation,
-    #   preprocessing_layers=preprocessing_layers,
-    #   preprocessing_combiner=preprocessing_combiner)
+    critic_network = value_network.ValueNetwork(
+      time_step_spec.observation,
+      preprocessing_layers=preprocessing_layers,
+      preprocessing_combiner=preprocessing_combiner)
 
-    critic_network = ConstantValueNetwork(time_step_spec.observation)
+    # critic_network = ConstantValueNetwork(time_step_spec.observation)
 
     agent = ppo_agent.PPOAgent(
         time_step_spec=time_step_spec,
         action_spec=action_spec,
         actor_net=actor_network,
         value_net=critic_network,
-
+        optimizer=tf.keras.optimizers.Adam(),
+        num_epochs=num_epochs)
         # Settings below match MLGO, most of the settings are actually the default values of PPOAgent.
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
-        importance_ratio_clipping=0.2,
-        lambda_value=0.0,
-        discount_factor=0.0,
-        entropy_regularization=0.003,
-        policy_l2_reg=0.000001,
-        value_function_l2_reg=0.0,
-        shared_vars_l2_reg=0.0,
-        value_pred_loss_coef=0.0,
-        num_epochs=num_epochs,
-        use_gae=False,
-        use_td_lambda_return=False,
-        normalize_rewards=False,
-        reward_norm_clipping=10.0,
-        normalize_observations=False,
-        log_prob_clipping=0.0,
-        kl_cutoff_factor=2.0,
-        kl_cutoff_coef=1000.0,
-        initial_adaptive_kl_beta=1.0,
-        adaptive_kl_target=0.01,
-        adaptive_kl_tolerance=0.3,
-        gradient_clipping=None,
-        value_clipping=None,
-        check_numerics=False,
-        compute_value_and_advantage_in_train=True,
-        update_normalizers_in_train=True,
-        debug_summaries=True,
-        summarize_grads_and_vars=True)
+        # optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
+        # importance_ratio_clipping=0.2,
+        # lambda_value=0.0,
+        # discount_factor=0.0,
+        # entropy_regularization=0.003,
+        # policy_l2_reg=0.000001,
+        # value_function_l2_reg=0.0,
+        # shared_vars_l2_reg=0.0,
+        # value_pred_loss_coef=0.0,
+        # num_epochs=num_epochs,
+        # use_gae=False,
+        # use_td_lambda_return=False,
+        # normalize_rewards=False,
+        # reward_norm_clipping=10.0,
+        # normalize_observations=False,
+        # log_prob_clipping=0.0,
+        # kl_cutoff_factor=2.0,
+        # kl_cutoff_coef=1000.0,
+        # initial_adaptive_kl_beta=1.0,
+        # adaptive_kl_target=0.01,
+        # adaptive_kl_tolerance=0.3,
+        # gradient_clipping=None,
+        # value_clipping=None,
+        # check_numerics=False,
+        # compute_value_and_advantage_in_train=True,
+        # update_normalizers_in_train=True,
+        # debug_summaries=True,
+        # summarize_grads_and_vars=True)
 
     agent.initialize()
     agent.train = common_utils.function(agent.train) # Apparently, it makes 'train' faster? Who knows why...
@@ -463,9 +464,9 @@ def parse(serialized_proto):
 
 global_step = tf.compat.v1.train.get_or_create_global_step()
 
-num_explorations               = 100
-num_epochs                     = 25
-num_policy_iterations          = 3
+num_exploration_factor         = 5
+num_epochs                     = 1
+num_episodes                   = 20
 num_iterations                 = 300
 batch_size                     = 256
 train_sequence_length          = 16 # We have to have 2 or more for PPOAgent to work.
@@ -541,7 +542,7 @@ class LogItem:
     cse_decision: any 
     reward: any 
 
-def superpmi_collect_data(corpus_file_path, baseline):
+def superpmi_collect_data(corpus_file_path, baseline, state, train_kind=1):
 
     # From https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters
     # Print iterations progress
@@ -569,25 +570,31 @@ def superpmi_collect_data(corpus_file_path, baseline):
     count = 0
     acc = []
 
-    indices = list(map(lambda x: x.spmi_index, baseline))
+    indices = flatten(list(map(lambda x: [x.spmi_index for _ in range(x.numCse * num_exploration_factor)], baseline)))
 
-    indices = flatten([indices for _ in range(num_explorations)])
-    data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=1) # random exploration
+    data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=train_kind) # random exploration
 
-    for item in baseline:
+    for i in range(len(baseline)):
+        item = baseline[i]
         spmi_index = item.spmi_index
         
-        # indices = [spmi_index for _ in range(num_explorations)]
-        # data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=1) # random exploration
+        #indices = [spmi_index for _ in range(num_explorations)]
+        #data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=1) # random exploration
+
+        perf_score_for_comparison = state[spmi_index]
+        best_perf_score = perf_score_for_comparison
 
         for item_random in data_random:
             if item_random.spmi_index == spmi_index:
-                if item_random.perfScore > item.perfScore:
+                if item_random.perfScore > perf_score_for_comparison:
                     for x in item_random.log:
                         x.reward = -1.0
-                elif item_random.perfScore < item.perfScore:
+                elif item_random.perfScore < perf_score_for_comparison:
                     for x in item_random.log:
                         x.reward = 1.0
+
+                    if item_random.perfScore < best_perf_score:
+                        best_perf_score = item_random.perfScore
                 else:
                     for x in item_random.log:
                         x.reward = 0.0
@@ -595,6 +602,9 @@ def superpmi_collect_data(corpus_file_path, baseline):
                 log_items = item_random.log
                     
                 acc = acc + log_items
+
+        state[spmi_index] = best_perf_score
+        
         count = count + 1
         printProgressBar(count, len(baseline))
 
@@ -613,7 +623,7 @@ def filter_cse_methods(m):
         return True and m.is_valid
     else:
         return False
-    
+
 baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:50]
 
 # ---------------------------------------
@@ -624,15 +634,21 @@ agent = create_agent(num_epochs)
 policy_saver = create_policy_saver(agent)
 collect_policy_saver = create_collect_policy_saver(agent)
 
+print(f'[mljit] Setting up baseline...')
+state = dict()
+for x in baseline:
+    state[x.spmi_index] = x.perfScore
+train(agent, superpmi_collect_data(corpus_file_path, baseline, state, train_kind=0))
+
 # Save initial policy.
 save_policy(collect_policy_saver, saved_collect_policy_path)
 save_policy(policy_saver, saved_policy_path)
 
 print(f'[mljit] Current step: {global_step.numpy()}')
 #while (global_step.numpy() < (num_policy_iterations * num_iterations)):
-for _ in range(num_policy_iterations):
+for _ in range(num_episodes):
     print('[mljit] Collecting data...')
-    sequence_examples = superpmi_collect_data(corpus_file_path, baseline)
+    sequence_examples = superpmi_collect_data(corpus_file_path, baseline, state)
     print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}...')
     train(agent, sequence_examples)
     save_policy(collect_policy_saver, saved_collect_policy_path)
@@ -645,16 +661,31 @@ for _ in range(num_policy_iterations):
 
 print('[mljit] Comparing results...')
 indices = list(map(lambda x: x.spmi_index, baseline))
+baseline_result = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=0)
 policy_result = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=2) # policy
 
 num_improvements = 0
 num_regressions = 0
 for i in range(len(policy_result)):
-    if policy_result[i].spmi_index == baseline[i].spmi_index:
-        if policy_result[i].perfScore < baseline[i].perfScore:       
-            num_improvements = num_improvements + 1
-        elif policy_result[i].perfScore > baseline[i].perfScore:
-            num_regressions = num_regressions + 1
+    curr = policy_result[i]
+    for j in range(len(baseline_result)):
+        prev = baseline_result[j]
 
+        if curr.spmi_index == prev.spmi_index:
+            print("")
+            print(f'spmi index {curr.spmi_index}')
+            if curr.perfScore < prev.perfScore:       
+                num_improvements = num_improvements + 1
+            elif curr.perfScore > prev.perfScore:
+                num_regressions = num_regressions + 1
+
+            for k in range(len(curr.log)):
+                curr_item = curr.log[k]
+                prev_item = prev.log[k]
+                print(f'prev decision: {prev_item.cse_decision}, curr decision: {curr_item.cse_decision}')
+            print(f'prev score: {prev.perfScore}, curr score: {curr.perfScore}')
+            print(f'best possible score: {state[curr.spmi_index]}')
+
+print('---------')
 print(f'Improvements: {num_improvements}')
 print(f'Regressions: {num_regressions}')

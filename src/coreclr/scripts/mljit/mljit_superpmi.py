@@ -312,7 +312,14 @@ def superpmi_get_next_available_process(superpmi_processes):
 
 # --------------------------------------------------------------------------------
 
+# This is used to ignore spmi indices that cause a time-out. The time-out could be due to an error within SuperPMI.
+# FIXME: This is global and doesn't differentiate between different corpus files.
+ignore_indices = set()
+
 def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, superpmi_processes):
+    if spmi_index in ignore_indices:
+        return None
+    
     result = None
 
     p = None
@@ -327,17 +334,19 @@ def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, s
                 if result == -1:
                     print(f'[mljit] WARNING: spmi_index {spmi_index} timed out. Terminating SuperPMI process...')
                     superpmi_terminate(p)
+                    result = None
+                    ignore_indices.add(spmi_index)
                     print("[mljit] Creating new SuperPMI process...")
                     superpmi_processes[pi] = create_superpmi_process(clrjit_dll, corpus_file_path, train_kind != None)
 
-                    tmpp = create_superpmi_process(clrjit_dll, corpus_file_path, train_kind != None)
+                    # tmpp = create_superpmi_process(clrjit_dll, corpus_file_path, train_kind != None)
 
-                    print(f"[mljit] Running isolated SuperPMI process for spmi_index {spmi_index}")
-                    result = superpmi_jit(tmpp, spmi_index, train_kind, cse_replay_seqs)
-                    superpmi_terminate(tmpp)
-                    if result == -1:
-                        print(f'[mljit] WARNING: spmi_index {spmi_index} timed out in isolated SuperPMI process.')
-                        result = None
+                    # print(f"[mljit] Running isolated SuperPMI process for spmi_index {spmi_index}")
+                    # result = superpmi_jit(tmpp, spmi_index, train_kind, cse_replay_seqs)
+                    # superpmi_terminate(tmpp)
+                    # if result == -1:
+                    #     print(f'[mljit] WARNING: spmi_index {spmi_index} timed out in isolated SuperPMI process.')
+                    #     result = None
                     p = -1
                 if result is not None:
                     if result.spmi_index != spmi_index:
@@ -351,6 +360,7 @@ def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, s
 # --------------------------------------------------------------------------------
 # 'train_kind' correpsonds to 'DOTNET_MLJitTrain'
 def collect_data(corpus_file_path, spmi_methods, train_kind=None, verbose_log=False):
+    spmi_methods = list(filter(lambda x: not (x in ignore_indices), spmi_methods))
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=superpmi_process_count) as executor:
         def create_jit_task(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs):
