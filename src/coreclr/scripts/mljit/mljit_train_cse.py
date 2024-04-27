@@ -6,6 +6,10 @@ import statistics
 import tensorflow as tf
 import json
 import mljit_superpmi
+
+import matplotlib
+import matplotlib.pyplot as plt
+
 from dataclasses import dataclass
 from typing import Any, List, Sequence, Tuple, Callable, Optional, Dict
 from types import SimpleNamespace
@@ -22,6 +26,8 @@ from tf_agents.networks import actor_distribution_network, value_network
 from tf_agents.policies import PolicySaver, random_tf_policy
 from tf_agents.utils import common as common_utils
 from absl import logging
+
+plt.ion()
 
 # Use 'saved_model_cli show --dir saved_policy\ --tag_set serve --signature_def action' from the command line to see the inputs/outputs of the policy.
 
@@ -626,6 +632,57 @@ def filter_cse_methods(m):
 
 baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:50]
 
+def plot_results(data_steps, data_num_improvements, show_result=False):
+    plt.figure(1)
+    if show_result:
+        plt.title('Result')
+    else:
+        plt.clf()
+        plt.title('Training...')
+    plt.xlabel('Step')
+    plt.ylabel('Improvements')
+    plt.plot(data_steps, data_num_improvements)
+    plt.pause(0.0001)
+
+# Compare Results
+def compare_results(data_steps, data_num_improvements, step_num):
+    print('[mljit] Comparing results...')
+    indices = list(map(lambda x: x.spmi_index, baseline))
+    baseline_result = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=0)
+    policy_result = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=2) # policy
+
+    num_improvements = 0
+    num_regressions = 0
+    for i in range(len(policy_result)):
+        curr = policy_result[i]
+        for j in range(len(baseline_result)):
+            prev = baseline_result[j]
+
+            if curr.spmi_index == prev.spmi_index:
+                # print("")
+                # print(f'spmi index {curr.spmi_index}')
+                if curr.perfScore < prev.perfScore:       
+                    num_improvements = num_improvements + 1
+                elif curr.perfScore > prev.perfScore:
+                    num_regressions = num_regressions + 1
+
+                # for k in range(len(curr.log)):
+                #     curr_item = curr.log[k]
+                #     prev_item = prev.log[k]
+                #     print(f'prev decision: {prev_item.cse_decision}, curr decision: {curr_item.cse_decision}')
+                # print(f'prev score: {prev.perfScore}, curr score: {curr.perfScore}')
+                # print(f'best possible score: {state[curr.spmi_index]}')
+
+    print('---------')
+    print(f'Improvements: {num_improvements}')
+    print(f'Regressions: {num_regressions}')
+
+    data_steps = data_steps + [step_num]
+    data_num_improvements = data_num_improvements + [num_improvements]
+
+    plot_results(data_steps, data_num_improvements)
+    return (data_steps, data_num_improvements)
+
 # ---------------------------------------
 
 # Training
@@ -644,6 +701,9 @@ train(agent, superpmi_collect_data(corpus_file_path, baseline, state, train_kind
 save_policy(collect_policy_saver, saved_collect_policy_path)
 save_policy(policy_saver, saved_policy_path)
 
+data_steps = []
+data_num_improvements = []
+
 print(f'[mljit] Current step: {global_step.numpy()}')
 #while (global_step.numpy() < (num_policy_iterations * num_iterations)):
 for _ in range(num_episodes):
@@ -654,38 +714,12 @@ for _ in range(num_episodes):
     save_policy(collect_policy_saver, saved_collect_policy_path)
     save_policy(policy_saver, saved_policy_path)
     print(f'[mljit] Episode complete at step: {global_step.numpy()}')
+    (new_data_steps, new_data_num_improvements) = compare_results(data_steps, data_num_improvements, global_step.numpy())
+    data_steps = new_data_steps
+    data_num_improvements = new_data_num_improvements
 
 # ---------------------------------------
 
-# Compare Results
-
-print('[mljit] Comparing results...')
-indices = list(map(lambda x: x.spmi_index, baseline))
-baseline_result = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=0)
-policy_result = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=2) # policy
-
-num_improvements = 0
-num_regressions = 0
-for i in range(len(policy_result)):
-    curr = policy_result[i]
-    for j in range(len(baseline_result)):
-        prev = baseline_result[j]
-
-        if curr.spmi_index == prev.spmi_index:
-            print("")
-            print(f'spmi index {curr.spmi_index}')
-            if curr.perfScore < prev.perfScore:       
-                num_improvements = num_improvements + 1
-            elif curr.perfScore > prev.perfScore:
-                num_regressions = num_regressions + 1
-
-            for k in range(len(curr.log)):
-                curr_item = curr.log[k]
-                prev_item = prev.log[k]
-                print(f'prev decision: {prev_item.cse_decision}, curr decision: {curr_item.cse_decision}')
-            print(f'prev score: {prev.perfScore}, curr score: {curr.perfScore}')
-            print(f'best possible score: {state[curr.spmi_index]}')
-
-print('---------')
-print(f'Improvements: {num_improvements}')
-print(f'Regressions: {num_regressions}')
+print(f'[mljit] Finished!')
+plt.ioff()
+plt.show()
