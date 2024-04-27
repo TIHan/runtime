@@ -422,6 +422,7 @@ def process_parsed_sequence_and_get_policy_info(parsed_sequence: Dict[str, Any])
 
 # From MLGO.
 def parse(serialized_proto):
+    print('[mljit] trajectory.from_episode...')
     # We copy through all context features at each frame, so even though we know
     # they don't change from frame to frame, they are still sequence features
     # and stored in the feature list.
@@ -470,12 +471,12 @@ def parse(serialized_proto):
 
 global_step = tf.compat.v1.train.get_or_create_global_step()
 
-num_exploration_factor         = 5
-num_epochs                     = 1
-num_episodes                   = 20
+num_exploration_factor         = 1
+num_epochs                     = 3
+num_policy_iterations          = 20
 num_iterations                 = 300
 batch_size                     = 256
-train_sequence_length          = 16 # We have to have 2 or more for PPOAgent to work.
+train_sequence_length          = 8 # We have to have 2 or more for PPOAgent to work.
 trajectory_shuffle_buffer_size = 1024
 
 def compute_dataset(sequence_examples):
@@ -576,7 +577,7 @@ def superpmi_collect_data(corpus_file_path, baseline, state, train_kind=1):
     count = 0
     acc = []
 
-    indices = flatten(list(map(lambda x: [x.spmi_index for _ in range(x.numCse * num_exploration_factor)], baseline)))
+    indices = list(map(lambda x: x.spmi_index, baseline)) #flatten(list(map(lambda x: [x.spmi_index for _ in range(x.numCand * num_exploration_factor)], baseline)))
 
     data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=train_kind) # random exploration
 
@@ -630,26 +631,24 @@ def filter_cse_methods(m):
     else:
         return False
 
-baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:50]
+baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:500]
+baseline_indices = list(map(lambda x: x.spmi_index, baseline))
+baseline_result = mljit_superpmi.collect_data(corpus_file_path, baseline_indices, train_kind=0)
 
-def plot_results(data_steps, data_num_improvements, show_result=False):
+def plot_results(data_policy_num, data_num_improvements, data_num_regressions):
     plt.figure(1)
-    if show_result:
-        plt.title('Result')
-    else:
-        plt.clf()
-        plt.title('Training...')
-    plt.xlabel('Step')
-    plt.ylabel('Improvements')
-    plt.plot(data_steps, data_num_improvements)
+    plt.clf()
+    plt.title('Training...')
+    plt.xlabel('Policy Iteration')
+    plt.plot(data_policy_num, data_num_improvements, label = "Improvements")
+    plt.plot(data_policy_num, data_num_regressions, label = "Regressions")
+    plt.legend()
     plt.pause(0.0001)
 
 # Compare Results
-def compare_results(data_steps, data_num_improvements, step_num):
+def compare_results(data_policy_num, data_num_improvements, data_num_regressions, policy_num):
     print('[mljit] Comparing results...')
-    indices = list(map(lambda x: x.spmi_index, baseline))
-    baseline_result = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=0)
-    policy_result = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=2) # policy
+    policy_result = mljit_superpmi.collect_data(corpus_file_path, baseline_indices, train_kind=2) # policy
 
     num_improvements = 0
     num_regressions = 0
@@ -659,29 +658,30 @@ def compare_results(data_steps, data_num_improvements, step_num):
             prev = baseline_result[j]
 
             if curr.spmi_index == prev.spmi_index:
-                # print("")
-                # print(f'spmi index {curr.spmi_index}')
+                print("")
+                print(f'spmi index {curr.spmi_index}')
                 if curr.perfScore < prev.perfScore:       
                     num_improvements = num_improvements + 1
                 elif curr.perfScore > prev.perfScore:
                     num_regressions = num_regressions + 1
 
-                # for k in range(len(curr.log)):
-                #     curr_item = curr.log[k]
-                #     prev_item = prev.log[k]
-                #     print(f'prev decision: {prev_item.cse_decision}, curr decision: {curr_item.cse_decision}')
-                # print(f'prev score: {prev.perfScore}, curr score: {curr.perfScore}')
-                # print(f'best possible score: {state[curr.spmi_index]}')
+                for k in range(len(curr.log)):
+                    curr_item = curr.log[k]
+                    prev_item = prev.log[k]
+                    print(f'prev decision: {prev_item.cse_decision}, curr decision: {curr_item.cse_decision}')
+                print(f'prev score: {prev.perfScore}, curr score: {curr.perfScore}')
+                print(f'best possible score: {state[curr.spmi_index]}')
 
     print('---------')
     print(f'Improvements: {num_improvements}')
     print(f'Regressions: {num_regressions}')
 
-    data_steps = data_steps + [step_num]
+    data_policy_num = data_policy_num + [int(policy_num)]
     data_num_improvements = data_num_improvements + [num_improvements]
+    data_num_regressions = data_num_regressions + [num_regressions]
 
-    plot_results(data_steps, data_num_improvements)
-    return (data_steps, data_num_improvements)
+    plot_results(data_policy_num, data_num_improvements, data_num_regressions)
+    return (data_policy_num, data_num_improvements, data_num_regressions)
 
 # ---------------------------------------
 
@@ -695,28 +695,35 @@ print(f'[mljit] Setting up baseline...')
 state = dict()
 for x in baseline:
     state[x.spmi_index] = x.perfScore
+print(f'[mljit] Training baseline...')
 train(agent, superpmi_collect_data(corpus_file_path, baseline, state, train_kind=0))
 
 # Save initial policy.
 save_policy(collect_policy_saver, saved_collect_policy_path)
 save_policy(policy_saver, saved_policy_path)
 
-data_steps = []
+data_policy_num = []
 data_num_improvements = []
+data_num_regressions = []
+
+(new_data_policy_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_policy_num, data_num_improvements, data_num_regressions, 0)
+data_policy_num = new_data_policy_num
+data_num_improvements = new_data_num_improvements
+data_num_regressions = new_data_num_regressions
 
 print(f'[mljit] Current step: {global_step.numpy()}')
-#while (global_step.numpy() < (num_policy_iterations * num_iterations)):
-for _ in range(num_episodes):
+for policy_num in range(num_policy_iterations):
     print('[mljit] Collecting data...')
     sequence_examples = superpmi_collect_data(corpus_file_path, baseline, state)
     print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}...')
     train(agent, sequence_examples)
     save_policy(collect_policy_saver, saved_collect_policy_path)
     save_policy(policy_saver, saved_policy_path)
-    print(f'[mljit] Episode complete at step: {global_step.numpy()}')
-    (new_data_steps, new_data_num_improvements) = compare_results(data_steps, data_num_improvements, global_step.numpy())
-    data_steps = new_data_steps
+    print(f'[mljit] Policy iteration complete at step: {global_step.numpy()}')
+    (new_data_policy_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_policy_num, data_num_improvements, data_num_regressions, policy_num + 1)
+    data_policy_num = new_data_policy_num
     data_num_improvements = new_data_num_improvements
+    data_num_regressions = new_data_num_regressions
 
 # ---------------------------------------
 
