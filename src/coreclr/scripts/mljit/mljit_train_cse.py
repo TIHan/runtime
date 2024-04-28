@@ -27,6 +27,29 @@ from tf_agents.policies import PolicySaver, random_tf_policy
 from tf_agents.utils import common as common_utils
 from absl import logging
 
+# From https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters
+# Print iterations progress
+def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration   - Required  : current iteration (Int)
+        total       - Required  : total iterations (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filledLength = int(length * iteration // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
+    # Print New Line on Complete
+    if iteration == total: 
+        print()
+
 plt.ion()
 
 # Use 'saved_model_cli show --dir saved_policy\ --tag_set serve --signature_def action' from the command line to see the inputs/outputs of the policy.
@@ -69,14 +92,16 @@ class ConstantValueNetwork(network.Network):
     return tf.fill(shape, constant), network_state
 
 observation_spec_and_preprocessing_layers = [
+    (tf.TensorSpec(dtype=tf.int64, shape=(), name='cse_index'), 
+        tf.keras.layers.Identity()),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_cost_ex'), 
-        tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)),
+        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_use_count_weighted_log'), 
-        tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)),
+        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_def_count_weighted_log'), 
-        tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)),
+        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_cost_sz'), 
-        tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)),
+        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)),
     (tf.TensorSpec(dtype=tf.int64, shape=(), name='cse_use_count'), 
         tf.keras.layers.Identity()),
     (tf.TensorSpec(dtype=tf.int64, shape=(), name='cse_def_count'), 
@@ -106,11 +131,11 @@ observation_spec_and_preprocessing_layers = [
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_has_call', minimum=0, maximum=1), 
         tf.keras.layers.Identity()),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='log_cse_use_count_weighted_times_cost_ex'), 
-        tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)),
+        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='log_cse_use_count_weighted_times_num_local_occurrences'), 
-        tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)),
+        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_distance'), 
-        tf.keras.layers.Rescaling(scale=1000, offset=0, dtype=tf.int64)), # (max postorder num - min postorder num) / num BBs
+        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)), # (max postorder num - min postorder num) / num BBs
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_containable', minimum=0, maximum=1), 
         tf.keras.layers.Identity()),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_cheap_containable', minimum=0, maximum=1), 
@@ -148,7 +173,7 @@ def create_agent(num_epochs):
         preprocessing_combiner=preprocessing_combiner,
         
         # Settings below match MLGO, most of the settings are actually the default values of ActorDistributionNetwork.
-        # fc_layer_params=(40, 40, 20),
+       # fc_layer_params=(40, 40, 20),
         dropout_layer_params=None,
         activation_fn=tf.keras.activations.relu)
 
@@ -157,7 +182,7 @@ def create_agent(num_epochs):
       preprocessing_layers=preprocessing_layers,
       preprocessing_combiner=preprocessing_combiner)
 
-    # critic_network = ConstantValueNetwork(time_step_spec.observation)
+   # critic_network = ConstantValueNetwork(time_step_spec.observation)
 
     agent = ppo_agent.PPOAgent(
         time_step_spec=time_step_spec,
@@ -204,6 +229,11 @@ def create_agent(num_epochs):
 
 def create_sequence_example(data):
     
+    many_cse_index = tf.train.FeatureList(feature=[
+        tf.train.Feature(int64_list=tf.train.Int64List(
+            value=[np.int64(data.cse_index)]))
+    ])
+
     many_cse_cost_ex = tf.train.FeatureList(feature=[
         tf.train.Feature(float_list=tf.train.FloatList(
             value=[float(data.cse_cost_ex)]))
@@ -345,6 +375,7 @@ def create_sequence_example(data):
     ])
 
     feature_dict = {
+        'cse_index': many_cse_index,
         'cse_cost_ex': many_cse_cost_ex,
         'cse_use_count_weighted_log': many_cse_use_count_weighted_log,
         'cse_def_count_weighted_log': many_cse_def_count_weighted_log,
@@ -471,12 +502,12 @@ def parse(serialized_proto):
 
 global_step = tf.compat.v1.train.get_or_create_global_step()
 
-num_exploration_factor         = 1
-num_epochs                     = 3
+num_exploration_factor         = 5
+num_epochs                     = 25
 num_policy_iterations          = 20
 num_iterations                 = 300
 batch_size                     = 256
-train_sequence_length          = 8 # We have to have 2 or more for PPOAgent to work.
+train_sequence_length          = 16 # We have to have 2 or more for PPOAgent to work.
 trajectory_shuffle_buffer_size = 1024
 
 def compute_dataset(sequence_examples):
@@ -491,12 +522,14 @@ def train(agent, sequence_examples):
         with tf.summary.record_if(lambda: tf.math.equal(
             global_step % 1000, 0)):
             dataset_iter = create_dataset_iter(sequence_examples)
+            count = 0
             for _ in range(num_iterations):
                 # When the data is not enough to fill in a batch, next(dataset_iter)
                 # will throw StopIteration exception, logging a warning message instead
                 # of killing the training when it happens.
                 try:
                     experience = next(dataset_iter)
+                    count = count + 1
                 except StopIteration:
                     logging.warning(
                         ('Skipped training because do not have enough data to fill '
@@ -504,6 +537,7 @@ def train(agent, sequence_examples):
                     break
 
                 agent.train(experience)
+                printProgressBar(count, num_iterations)
     else:
        logging.warning('No sequence examples were found to train.')
 
@@ -521,6 +555,7 @@ def save_policy(policy_saver, path):
 
 @dataclass
 class LogItem:
+    cse_index: any
     cse_cost_ex: any 
     cse_use_count_weighted_log: any 
     cse_def_count_weighted_log: any 
@@ -550,34 +585,10 @@ class LogItem:
     reward: any 
 
 def superpmi_collect_data(corpus_file_path, baseline, state, train_kind=1):
-
-    # From https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters
-    # Print iterations progress
-    def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
-        """
-        Call in a loop to create terminal progress bar
-        @params:
-            iteration   - Required  : current iteration (Int)
-            total       - Required  : total iterations (Int)
-            prefix      - Optional  : prefix string (Str)
-            suffix      - Optional  : suffix string (Str)
-            decimals    - Optional  : positive number of decimals in percent complete (Int)
-            length      - Optional  : character length of bar (Int)
-            fill        - Optional  : bar fill character (Str)
-            printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
-        """
-        percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-        filledLength = int(length * iteration // total)
-        bar = fill * filledLength + '-' * (length - filledLength)
-        print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
-        # Print New Line on Complete
-        if iteration == total: 
-            print()
-
-    count = 0
     acc = []
 
-    indices = list(map(lambda x: x.spmi_index, baseline)) #flatten(list(map(lambda x: [x.spmi_index for _ in range(x.numCand * num_exploration_factor)], baseline)))
+    #indices = list(map(lambda x: x.spmi_index, baseline)) 
+    indices = flatten(list(map(lambda x: [x.spmi_index for _ in range(x.numCand * num_exploration_factor)], baseline)))
 
     data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=train_kind) # random exploration
 
@@ -588,32 +599,40 @@ def superpmi_collect_data(corpus_file_path, baseline, state, train_kind=1):
         #indices = [spmi_index for _ in range(num_explorations)]
         #data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=1) # random exploration
 
-        perf_score_for_comparison = state[spmi_index]
-        best_perf_score = perf_score_for_comparison
+        item_best = state[spmi_index]
+        next_item_best = item_best
 
         for item_random in data_random:
             if item_random.spmi_index == spmi_index:
-                if item_random.perfScore > perf_score_for_comparison:
-                    for x in item_random.log:
-                        x.reward = -1.0
-                elif item_random.perfScore < perf_score_for_comparison:
-                    for x in item_random.log:
-                        x.reward = 1.0
 
-                    if item_random.perfScore < best_perf_score:
-                        best_perf_score = item_random.perfScore
-                else:
-                    for x in item_random.log:
-                        x.reward = 0.0
+                for j in range(len(item_random.log)):
+                    log_item_random = item_random.log[j]
+                    log_item_best = item_best.log[j]
 
-                log_items = item_random.log
+                    if item_random.perfScore < item_best.perfScore:
+                        if log_item_random.cse_decision == log_item_best.cse_decision:
+                            log_item_random.reward = 1.0
+                        else:
+                            log_item_random.reward = 0.0
+                    elif item_random.perfScore > item_best.perfScore:
+                        if log_item_random.cse_decision == log_item_best.cse_decision:
+                            log_item_random.reward = 0.0
+                        else:
+                            log_item_random.reward = -1.0
+                    else:
+                        if log_item_random.cse_decision == log_item_best.cse_decision:
+                            log_item_random.reward = 0.0
+                        else:
+                            log_item_random.reward = -1.0
+
+                if item_random.perfScore < item_best.perfScore:
+                    next_item_best = item_random
+                elif item_random.perfScore == item_best.perfScore and item_random.numCse < item_best.numCse:
+                    next_item_best = item_random
                     
-                acc = acc + log_items
+                acc = acc + item_random.log
 
-        state[spmi_index] = best_perf_score
-        
-        count = count + 1
-        printProgressBar(count, len(baseline))
+        state[spmi_index] = next_item_best
 
     print('[mljit] Creating sequence examples...')
     return list(map(create_serialized_sequence_example, acc))
@@ -631,9 +650,22 @@ def filter_cse_methods(m):
     else:
         return False
 
-baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:500]
+baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:50]
+
+# ---------------------------------------
+
+# Training
+
+agent = create_agent(num_epochs)
+policy_saver = create_policy_saver(agent)
+collect_policy_saver = create_collect_policy_saver(agent)
+
+# Save initial policy.
+save_policy(collect_policy_saver, saved_collect_policy_path)
+save_policy(policy_saver, saved_policy_path)
+
 baseline_indices = list(map(lambda x: x.spmi_index, baseline))
-baseline_result = mljit_superpmi.collect_data(corpus_file_path, baseline_indices, train_kind=0)
+baseline = mljit_superpmi.collect_data(corpus_file_path, baseline_indices, train_kind=0)
 
 def plot_results(data_policy_num, data_num_improvements, data_num_regressions):
     plt.figure(1)
@@ -654,23 +686,25 @@ def compare_results(data_policy_num, data_num_improvements, data_num_regressions
     num_regressions = 0
     for i in range(len(policy_result)):
         curr = policy_result[i]
-        for j in range(len(baseline_result)):
-            prev = baseline_result[j]
+        for j in range(len(baseline)):
+            base = baseline[j]
 
-            if curr.spmi_index == prev.spmi_index:
+            if curr.spmi_index == base.spmi_index:
+                best = state[curr.spmi_index]
+
                 print("")
                 print(f'spmi index {curr.spmi_index}')
-                if curr.perfScore < prev.perfScore:       
+                if curr.perfScore < base.perfScore:       
                     num_improvements = num_improvements + 1
-                elif curr.perfScore > prev.perfScore:
+                elif curr.perfScore > base.perfScore:
                     num_regressions = num_regressions + 1
 
                 for k in range(len(curr.log)):
+                    best_item = best.log[k]
                     curr_item = curr.log[k]
-                    prev_item = prev.log[k]
-                    print(f'prev decision: {prev_item.cse_decision}, curr decision: {curr_item.cse_decision}')
-                print(f'prev score: {prev.perfScore}, curr score: {curr.perfScore}')
-                print(f'best possible score: {state[curr.spmi_index]}')
+                    base_item = base.log[k]
+                    print(f'best decision: {best_item.cse_decision}, base decision: {base_item.cse_decision}, curr decision: {curr_item.cse_decision}')
+                print(f'best score: {best.perfScore}, base score: {base.perfScore}, curr score: {curr.perfScore}')
 
     print('---------')
     print(f'Improvements: {num_improvements}')
@@ -683,22 +717,12 @@ def compare_results(data_policy_num, data_num_improvements, data_num_regressions
     plot_results(data_policy_num, data_num_improvements, data_num_regressions)
     return (data_policy_num, data_num_improvements, data_num_regressions)
 
-# ---------------------------------------
-
-# Training
-
-agent = create_agent(num_epochs)
-policy_saver = create_policy_saver(agent)
-collect_policy_saver = create_collect_policy_saver(agent)
-
 print(f'[mljit] Setting up baseline...')
 state = dict()
 for x in baseline:
-    state[x.spmi_index] = x.perfScore
+    state[x.spmi_index] = x
 print(f'[mljit] Training baseline...')
 train(agent, superpmi_collect_data(corpus_file_path, baseline, state, train_kind=0))
-
-# Save initial policy.
 save_policy(collect_policy_saver, saved_collect_policy_path)
 save_policy(policy_saver, saved_policy_path)
 

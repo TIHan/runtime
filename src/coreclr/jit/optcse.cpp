@@ -106,6 +106,7 @@ void mljit_policy_set_cse_inputs(MLJIT_CsePolicyBase* policy, Compiler* compiler
         }
     }
 
+    //policy->SetInput_cse_index(cse->csdIndex); // REVIEW: Should we actually consider the index?
     policy->SetInput_cse_cost_ex(costEx);
     policy->SetInput_cse_use_count_weighted_log((float)(deMinimusAdj + log(max(deMinimis, cse->csdUseWtCnt))));
     policy->SetInput_cse_def_count_weighted_log((float)(deMinimusAdj + log(max(deMinimis, cse->csdDefWtCnt))));
@@ -138,7 +139,7 @@ void mljit_policy_set_cse_inputs(MLJIT_CsePolicyBase* policy, Compiler* compiler
     policy->SetInput_discount(0);
 }
 
-bool run_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
+bool mljit_run_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
 {
     if (currentPolicy)
     {
@@ -152,7 +153,7 @@ bool run_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
 }
 
 // For ML training.
-bool run_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
+bool mljit_run_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
 {
     if (currentCollectPolicy)
     {
@@ -166,7 +167,7 @@ bool run_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
 }
 
 // For ML training. Does not execute the policy. Just sets the inputs and outputs for logging.
-void log_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse, bool didCse)
+void mljit_log_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse, bool didCse)
 {
     if (currentCollectPolicy)
     {
@@ -5197,7 +5198,7 @@ void CSE_HeuristicCommon::ConsiderCandidates()
 #ifdef DEBUG
             if (mljitEnabled && (mltrain == 0))
             {
-                log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), false);
+                mljit_log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), false);
             }
 #endif // DEBUG
             continue;
@@ -5231,11 +5232,11 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         bool doCSE = false;
         if (mljitEnabled && (mltrain == 1))
         {
-            doCSE = run_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
+            doCSE = mljit_run_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
         }
         else if (mljitEnabled && (mltrain == 2))
         {
-            doCSE = run_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
+            doCSE = mljit_run_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
         }
         else
         {
@@ -5290,7 +5291,7 @@ void CSE_HeuristicCommon::ConsiderCandidates()
 #ifdef DEBUG
         if (mljitEnabled && (mltrain == 0))
         {
-            log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), doCSE);
+            mljit_log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), doCSE);
         }
 #endif // DEBUG
     }

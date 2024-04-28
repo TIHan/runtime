@@ -227,6 +227,8 @@ void Add_CategoricalProjectionNetwork_logits_Output(
 void mljit_add_cse_policy_inputs(
     int numInputs, TF_Input* input, TF_Tensor** inputValues, int& inputCount, TF_Graph* graph)
 {
+    AddScalarInput<int64_t>(numInputs, input, inputValues, inputCount, graph,
+                                                                                    "action_cse_index", TF_INT64);
     AddScalarInput<float>(numInputs, input, inputValues, inputCount, graph,
                                                                                     "action_cse_cost_ex", TF_FLOAT);
     AddScalarInput<float>(numInputs, input, inputValues, inputCount, graph,
@@ -319,7 +321,7 @@ MLJIT_CsePolicy* mljit_try_create_cse_policy()
     }
 
     //****** Get input tensors
-    int         numInputs   = 28;
+    int         numInputs   = 29;
     TF_Input*   input       = (TF_Input*)malloc(sizeof(TF_Input) * numInputs);
     TF_Tensor** inputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*) * numInputs);
 
@@ -391,7 +393,7 @@ MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy()
     }
 
     //****** Get input tensors
-    int         numInputs   = 28;
+    int         numInputs   = 29;
     TF_Input*   input       = (TF_Input*)malloc(sizeof(TF_Input) * numInputs);
     TF_Tensor** inputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*) * numInputs);
 

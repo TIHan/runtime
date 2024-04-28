@@ -11,6 +11,7 @@
 
 struct MLJIT_CseActionLogItem
 {
+    int64_t cse_index;
     float cse_cost_ex;
     float cse_use_count_weighted_log;
     float cse_def_count_weighted_log;
@@ -96,34 +97,35 @@ public:
     int                    loggedActionCount = 0;
     MLJIT_CseActionLogItem loggedActions[256];
 
-    MLJIT_SET_SCALAR_INPUT_API(cse_cost_ex, float, 0);
-    MLJIT_SET_SCALAR_INPUT_API(cse_use_count_weighted_log, float, 1);
-    MLJIT_SET_SCALAR_INPUT_API(cse_def_count_weighted_log, float, 2);
-    MLJIT_SET_SCALAR_INPUT_API(cse_cost_sz, int64_t, 3);
-    MLJIT_SET_SCALAR_INPUT_API(cse_use_count, int64_t, 4);
-    MLJIT_SET_SCALAR_INPUT_API(cse_def_count, int64_t, 5);
-    MLJIT_SET_SCALAR_INPUT_API(cse_is_live_across_call, int64_t, 6);
-    MLJIT_SET_SCALAR_INPUT_API(cse_is_int, int64_t, 7);
-    MLJIT_SET_SCALAR_INPUT_API(cse_is_constant_not_shared, int64_t, 8);
-    MLJIT_SET_SCALAR_INPUT_API(cse_is_shared_constant, int64_t, 9);
-    MLJIT_SET_SCALAR_INPUT_API(cse_cost_is_MIN_CSE_COST, int64_t, 10);
-    MLJIT_SET_SCALAR_INPUT_API(cse_is_constant_live_across_call, int64_t, 11);
-    MLJIT_SET_SCALAR_INPUT_API(cse_is_constant_min_cost, int64_t, 12);
-    MLJIT_SET_SCALAR_INPUT_API(cse_cost_is_MIN_CSE_COST_live_across_call, int64_t, 13);
-    MLJIT_SET_SCALAR_INPUT_API(cse_is_GTF_MAKE_CSE, int64_t, 14);
-    MLJIT_SET_SCALAR_INPUT_API(cse_num_distinct_locals, int64_t, 15);
-    MLJIT_SET_SCALAR_INPUT_API(cse_num_local_occurrences, int64_t, 16);
-    MLJIT_SET_SCALAR_INPUT_API(cse_has_call, int64_t, 17);
-    MLJIT_SET_SCALAR_INPUT_API(log_cse_use_count_weighted_times_cost_ex, float, 18);
-    MLJIT_SET_SCALAR_INPUT_API(log_cse_use_count_weighted_times_num_local_occurrences, float, 19);
-    MLJIT_SET_SCALAR_INPUT_API(cse_distance, float, 20);
-    MLJIT_SET_SCALAR_INPUT_API(cse_is_containable, int64_t, 21);
-    MLJIT_SET_SCALAR_INPUT_API(cse_is_cheap_containable, int64_t, 22);
-    MLJIT_SET_SCALAR_INPUT_API(cse_is_live_across_call_in_LSRA_ordering, int64_t, 23);
-    MLJIT_SET_SCALAR_INPUT_API(log_pressure_estimated_weight, int64_t, 24);
-    MLJIT_SET_SCALAR_INPUT_API(reward, float, 25);
-    MLJIT_SET_SCALAR_INPUT_API(step_type, int, 26);
-    MLJIT_SET_SCALAR_INPUT_API(discount, float, 27);
+    MLJIT_SET_SCALAR_INPUT_API(cse_index, int64_t, 0);
+    MLJIT_SET_SCALAR_INPUT_API(cse_cost_ex, float, 1);
+    MLJIT_SET_SCALAR_INPUT_API(cse_use_count_weighted_log, float, 2);
+    MLJIT_SET_SCALAR_INPUT_API(cse_def_count_weighted_log, float, 3);
+    MLJIT_SET_SCALAR_INPUT_API(cse_cost_sz, int64_t, 4);
+    MLJIT_SET_SCALAR_INPUT_API(cse_use_count, int64_t, 5);
+    MLJIT_SET_SCALAR_INPUT_API(cse_def_count, int64_t, 6);
+    MLJIT_SET_SCALAR_INPUT_API(cse_is_live_across_call, int64_t, 7);
+    MLJIT_SET_SCALAR_INPUT_API(cse_is_int, int64_t, 8);
+    MLJIT_SET_SCALAR_INPUT_API(cse_is_constant_not_shared, int64_t, 9);
+    MLJIT_SET_SCALAR_INPUT_API(cse_is_shared_constant, int64_t, 10);
+    MLJIT_SET_SCALAR_INPUT_API(cse_cost_is_MIN_CSE_COST, int64_t, 11);
+    MLJIT_SET_SCALAR_INPUT_API(cse_is_constant_live_across_call, int64_t, 12);
+    MLJIT_SET_SCALAR_INPUT_API(cse_is_constant_min_cost, int64_t, 13);
+    MLJIT_SET_SCALAR_INPUT_API(cse_cost_is_MIN_CSE_COST_live_across_call, int64_t, 14);
+    MLJIT_SET_SCALAR_INPUT_API(cse_is_GTF_MAKE_CSE, int64_t, 15);
+    MLJIT_SET_SCALAR_INPUT_API(cse_num_distinct_locals, int64_t, 16);
+    MLJIT_SET_SCALAR_INPUT_API(cse_num_local_occurrences, int64_t, 17);
+    MLJIT_SET_SCALAR_INPUT_API(cse_has_call, int64_t, 18);
+    MLJIT_SET_SCALAR_INPUT_API(log_cse_use_count_weighted_times_cost_ex, float, 19);
+    MLJIT_SET_SCALAR_INPUT_API(log_cse_use_count_weighted_times_num_local_occurrences, float, 20);
+    MLJIT_SET_SCALAR_INPUT_API(cse_distance, float, 21);
+    MLJIT_SET_SCALAR_INPUT_API(cse_is_containable, int64_t, 22);
+    MLJIT_SET_SCALAR_INPUT_API(cse_is_cheap_containable, int64_t, 23);
+    MLJIT_SET_SCALAR_INPUT_API(cse_is_live_across_call_in_LSRA_ordering, int64_t, 24);
+    MLJIT_SET_SCALAR_INPUT_API(log_pressure_estimated_weight, int64_t, 25);
+    MLJIT_SET_SCALAR_INPUT_API(reward, float, 26);
+    MLJIT_SET_SCALAR_INPUT_API(step_type, int, 27);
+    MLJIT_SET_SCALAR_INPUT_API(discount, float, 28);
 
     virtual int64_t GetOutput_cse_decision() = 0;
     virtual void    SetOutput_cse_decision(int64_t value) = 0;
@@ -136,6 +138,7 @@ public:
     void LogInputsAndOutputs()
     {
         MLJIT_CseActionLogItem l = {};
+        MLJIT_RECORD_INPUT(cse_index);
         MLJIT_RECORD_INPUT(cse_cost_ex);
         MLJIT_RECORD_INPUT(cse_use_count_weighted_log);
         MLJIT_RECORD_INPUT(cse_def_count_weighted_log);
@@ -180,6 +183,7 @@ public:
         {
             fprintf(fptr, "{");
             auto l = &loggedActions[i];
+            MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, cse_index);
             MLJIT_WRITE_JSON_PROPERTY_FLOAT(fptr, cse_cost_ex);
             MLJIT_WRITE_JSON_PROPERTY_FLOAT(fptr, cse_use_count_weighted_log);
             MLJIT_WRITE_JSON_PROPERTY_FLOAT(fptr, cse_def_count_weighted_log);
