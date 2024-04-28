@@ -106,7 +106,7 @@ void mljit_policy_set_cse_inputs(MLJIT_CsePolicyBase* policy, Compiler* compiler
         }
     }
 
-    //policy->SetInput_cse_index(cse->csdIndex); // REVIEW: Should we actually consider the index?
+    policy->SetInput_cse_index(0); // cse->csdIndex); // REVIEW: Should we actually consider the index?
     policy->SetInput_cse_cost_ex(costEx);
     policy->SetInput_cse_use_count_weighted_log((float)(deMinimusAdj + log(max(deMinimis, cse->csdUseWtCnt))));
     policy->SetInput_cse_def_count_weighted_log((float)(deMinimusAdj + log(max(deMinimis, cse->csdDefWtCnt))));
@@ -146,7 +146,7 @@ bool mljit_run_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
         mljit_policy_set_cse_inputs(currentPolicy, compiler, minCseCost, cse);
         currentPolicy->Action();
         bool cseDecision = currentPolicy->GetOutput_cse_decision();
-        currentPolicy->LogInputsAndOutputs();
+        currentPolicy->LogAction();
         return cseDecision;
     }
     return false;
@@ -160,7 +160,7 @@ bool mljit_run_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
         mljit_policy_set_cse_inputs(currentCollectPolicy, compiler, minCseCost, cse);
         currentCollectPolicy->Action();
         bool cseDecision = currentCollectPolicy->GetOutput_cse_decision();
-        currentCollectPolicy->LogInputsAndOutputs();
+        currentCollectPolicy->LogAction();
         return cseDecision;
     }
     return false;
@@ -173,7 +173,7 @@ void mljit_log_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse, b
     {
         mljit_policy_set_cse_inputs(currentCollectPolicy, compiler, minCseCost, cse);
         currentCollectPolicy->SetOutput_cse_decision(didCse);
-        currentCollectPolicy->LogInputsAndOutputs();
+        currentCollectPolicy->LogAction();
     }
 }
 #endif // DEBUG

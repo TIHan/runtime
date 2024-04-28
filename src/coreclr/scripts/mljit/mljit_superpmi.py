@@ -249,7 +249,7 @@ def parse_log_file(spmi_index, path):
         f.close()
         return data
     except Exception as error:
-        print(f'[mlji] ERROR: There was an error when parsing the training log file from the JIT output on spmi_index {spmi_index}:\n{error}')
+        print(f'[mljit] ERROR: There was an error when parsing the training log file \"{path}\" from the JIT output on spmi_index {spmi_index}:\n{error}')
         return []
 
 # --------------------------------------------------------------------------------
@@ -338,15 +338,6 @@ def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, s
                     ignore_indices.add(spmi_index)
                     print("[mljit] Creating new SuperPMI process...")
                     superpmi_processes[pi] = create_superpmi_process(clrjit_dll, corpus_file_path, train_kind != None)
-
-                    # tmpp = create_superpmi_process(clrjit_dll, corpus_file_path, train_kind != None)
-
-                    # print(f"[mljit] Running isolated SuperPMI process for spmi_index {spmi_index}")
-                    # result = superpmi_jit(tmpp, spmi_index, train_kind, cse_replay_seqs)
-                    # superpmi_terminate(tmpp)
-                    # if result == -1:
-                    #     print(f'[mljit] WARNING: spmi_index {spmi_index} timed out in isolated SuperPMI process.')
-                    #     result = None
                     p = -1
                 if result is not None:
                     if result.spmi_index != spmi_index:

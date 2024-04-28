@@ -182,44 +182,44 @@ def create_agent(num_epochs):
       preprocessing_layers=preprocessing_layers,
       preprocessing_combiner=preprocessing_combiner)
 
-   # critic_network = ConstantValueNetwork(time_step_spec.observation)
+    #critic_network = ConstantValueNetwork(time_step_spec.observation)
 
     agent = ppo_agent.PPOAgent(
         time_step_spec=time_step_spec,
         action_spec=action_spec,
         actor_net=actor_network,
         value_net=critic_network,
-        optimizer=tf.keras.optimizers.Adam(),
-        num_epochs=num_epochs)
+        # optimizer=tf.keras.optimizers.Adam(),
+        # num_epochs=num_epochs)
         # Settings below match MLGO, most of the settings are actually the default values of PPOAgent.
-        # optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
-        # importance_ratio_clipping=0.2,
-        # lambda_value=0.0,
-        # discount_factor=0.0,
-        # entropy_regularization=0.003,
-        # policy_l2_reg=0.000001,
-        # value_function_l2_reg=0.0,
-        # shared_vars_l2_reg=0.0,
-        # value_pred_loss_coef=0.0,
-        # num_epochs=num_epochs,
-        # use_gae=False,
-        # use_td_lambda_return=False,
-        # normalize_rewards=False,
-        # reward_norm_clipping=10.0,
-        # normalize_observations=False,
-        # log_prob_clipping=0.0,
-        # kl_cutoff_factor=2.0,
-        # kl_cutoff_coef=1000.0,
-        # initial_adaptive_kl_beta=1.0,
-        # adaptive_kl_target=0.01,
-        # adaptive_kl_tolerance=0.3,
-        # gradient_clipping=None,
-        # value_clipping=None,
-        # check_numerics=False,
-        # compute_value_and_advantage_in_train=True,
-        # update_normalizers_in_train=True,
-        # debug_summaries=True,
-        # summarize_grads_and_vars=True)
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
+        importance_ratio_clipping=0.2,
+        lambda_value=0.0,
+        discount_factor=0.0,
+        entropy_regularization=0.003,
+        policy_l2_reg=0.000001,
+        value_function_l2_reg=0.0,
+        shared_vars_l2_reg=0.0,
+        value_pred_loss_coef=0.0,
+        num_epochs=num_epochs,
+        use_gae=False,
+        use_td_lambda_return=False,
+        normalize_rewards=False,
+        reward_norm_clipping=10.0,
+        normalize_observations=False,
+        log_prob_clipping=0.0,
+        kl_cutoff_factor=2.0,
+        kl_cutoff_coef=1000.0,
+        initial_adaptive_kl_beta=1.0,
+        adaptive_kl_target=0.01,
+        adaptive_kl_tolerance=0.3,
+        gradient_clipping=None,
+        value_clipping=None,
+        check_numerics=False,
+        compute_value_and_advantage_in_train=True,
+        update_normalizers_in_train=True,
+        debug_summaries=True,
+        summarize_grads_and_vars=True)
 
     agent.initialize()
     agent.train = common_utils.function(agent.train) # Apparently, it makes 'train' faster? Who knows why...
@@ -228,151 +228,84 @@ def create_agent(num_epochs):
 # ---------------------------------------
 
 def create_sequence_example(data):
+
+    (log, _) = data
+
+    def log_to_feature_int64(x, f):
+        return tf.train.Feature(int64_list=tf.train.Int64List(value=[np.int64(f(x))]))
     
-    many_cse_index = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_index)]))
-    ])
+    def log_to_feature_float(x, f):
+        return tf.train.Feature(float_list=tf.train.FloatList(value=[np.float32(f(x))]))
+    
+    def log_to_feature_float_2(xs, f):
+        return tf.train.Feature(float_list=tf.train.FloatList(value=[np.float32(x) for x in f(xs)]))
+    
+    def logs_to_features_int64(xs, f):
+        return [log_to_feature_int64(x, f) for x in xs]
+    
+    def logs_to_features_float(xs, f):
+        return [log_to_feature_float(x, f) for x in xs]
+    
+    def logs_to_features_float_2(xs, f):
+        return [log_to_feature_float_2(x, f) for x in xs]
+    
+    many_cse_index = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_index))
 
-    many_cse_cost_ex = tf.train.FeatureList(feature=[
-        tf.train.Feature(float_list=tf.train.FloatList(
-            value=[float(data.cse_cost_ex)]))
-    ])
+    many_cse_cost_ex = tf.train.FeatureList(feature=logs_to_features_float(log, lambda x: x.cse_cost_ex))
 
-    many_cse_use_count_weighted_log = tf.train.FeatureList(feature=[
-        tf.train.Feature(float_list=tf.train.FloatList(
-            value=[float(data.cse_use_count_weighted_log)]))
-    ])
+    many_cse_use_count_weighted_log = tf.train.FeatureList(feature=logs_to_features_float(log, lambda x: x.cse_use_count_weighted_log))
 
-    many_cse_def_count_weighted_log = tf.train.FeatureList(feature=[
-        tf.train.Feature(float_list=tf.train.FloatList(
-            value=[float(data.cse_def_count_weighted_log)]))
-    ])
+    many_cse_def_count_weighted_log = tf.train.FeatureList(feature=logs_to_features_float(log, lambda x: x.cse_def_count_weighted_log))
 
-    many_cse_cost_sz = tf.train.FeatureList(feature=[
-        tf.train.Feature(float_list=tf.train.FloatList(
-            value=[float(data.cse_cost_sz)]))
-    ])
+    many_cse_cost_sz = tf.train.FeatureList(feature=logs_to_features_float(log, lambda x: x.cse_cost_sz))
 
-    many_cse_use_count = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_use_count)]))
-    ])
+    many_cse_use_count = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_use_count))
 
-    many_cse_def_count = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_def_count)]))
-    ])
+    many_cse_def_count = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_def_count))
 
-    many_cse_is_live_across_call = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_is_live_across_call)]))
-    ])
+    many_cse_is_live_across_call = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_is_live_across_call))
 
-    many_cse_is_int = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_is_int)]))
-    ])
+    many_cse_is_int = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_is_int))
 
-    many_cse_is_constant_not_shared = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_is_constant_not_shared)]))
-    ])
+    many_cse_is_constant_not_shared = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_is_constant_not_shared))
 
-    many_cse_is_shared_constant = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_is_shared_constant)]))
-    ])
+    many_cse_is_shared_constant = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_is_shared_constant))
 
-    many_cse_cost_is_MIN_CSE_COST = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_cost_is_MIN_CSE_COST)]))
-    ])
+    many_cse_cost_is_MIN_CSE_COST = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_cost_is_MIN_CSE_COST))
 
-    many_cse_is_constant_live_across_call = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_is_constant_live_across_call)]))
-    ])
+    many_cse_is_constant_live_across_call = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_is_constant_live_across_call))
 
-    many_cse_is_constant_min_cost = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_is_constant_min_cost)]))
-    ])
+    many_cse_is_constant_min_cost = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_is_constant_min_cost))
 
-    many_cse_cost_is_MIN_CSE_COST_live_across_call = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_cost_is_MIN_CSE_COST_live_across_call)]))
-    ])
+    many_cse_cost_is_MIN_CSE_COST_live_across_call = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_cost_is_MIN_CSE_COST_live_across_call))
 
-    many_cse_is_GTF_MAKE_CSE = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_is_GTF_MAKE_CSE)]))
-    ])
+    many_cse_is_GTF_MAKE_CSE = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_is_GTF_MAKE_CSE))
 
-    many_cse_num_distinct_locals = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_num_distinct_locals)]))
-    ])
+    many_cse_num_distinct_locals = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_num_distinct_locals))
 
-    many_cse_num_local_occurrences = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_num_local_occurrences)]))
-    ])
+    many_cse_num_local_occurrences = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_num_local_occurrences))
 
-    many_cse_has_call = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_has_call)]))
-    ])
+    many_cse_has_call = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_has_call))
 
-    many_log_cse_use_count_weighted_times_cost_ex = tf.train.FeatureList(feature=[
-        tf.train.Feature(float_list=tf.train.FloatList(
-            value=[float(data.log_cse_use_count_weighted_times_cost_ex)]))
-    ])
+    many_log_cse_use_count_weighted_times_cost_ex = tf.train.FeatureList(feature=logs_to_features_float(log, lambda x: x.log_cse_use_count_weighted_times_cost_ex))
 
-    many_log_cse_use_count_weighted_times_num_local_occurrences = tf.train.FeatureList(feature=[
-        tf.train.Feature(float_list=tf.train.FloatList(
-            value=[float(data.log_cse_use_count_weighted_times_num_local_occurrences)]))
-    ])
+    many_log_cse_use_count_weighted_times_num_local_occurrences = tf.train.FeatureList(feature=logs_to_features_float(log, lambda x: x.log_cse_use_count_weighted_times_num_local_occurrences))
 
-    many_cse_distance = tf.train.FeatureList(feature=[
-        tf.train.Feature(float_list=tf.train.FloatList(
-            value=[float(data.cse_distance)]))
-    ])
+    many_cse_distance = tf.train.FeatureList(feature=logs_to_features_float(log, lambda x: x.cse_distance))
 
-    many_cse_is_containable = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_is_containable)]))
-    ])
+    many_cse_is_containable = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_is_containable))
 
-    many_cse_is_cheap_containable = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_is_cheap_containable)]))
-    ])
+    many_cse_is_cheap_containable = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_is_cheap_containable))
 
-    many_cse_is_live_across_call_in_LSRA_ordering = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_is_live_across_call_in_LSRA_ordering)]))
-    ])
+    many_cse_is_live_across_call_in_LSRA_ordering = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_is_live_across_call_in_LSRA_ordering))
 
-    many_log_pressure_estimated_weight = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.log_pressure_estimated_weight)]))
-    ])
+    many_log_pressure_estimated_weight = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.log_pressure_estimated_weight))
 
-    many_cse_decision = tf.train.FeatureList(feature=[
-        tf.train.Feature(int64_list=tf.train.Int64List(
-            value=[np.int64(data.cse_decision)]))
-    ])
+    many_cse_decision = tf.train.FeatureList(feature=logs_to_features_int64(log, lambda x: x.cse_decision))
 
-    many_reward = tf.train.FeatureList(feature=[
-        tf.train.Feature(float_list=tf.train.FloatList(
-            value=[float(data.reward)]))
-    ])
+    many_reward = tf.train.FeatureList(feature=logs_to_features_float(log, lambda x: x.reward))
 
-    many_logits = tf.train.FeatureList(feature=[
-        tf.train.Feature(float_list=tf.train.FloatList(
-            value=[0.0, 0.0]))
-    ])
+    many_CategoricalProjectionNetwork_logits = tf.train.FeatureList(feature=logs_to_features_float_2(log, lambda x: x.CategoricalProjectionNetwork_logits))
 
     feature_dict = {
         'cse_index': many_cse_index,
@@ -403,7 +336,7 @@ def create_sequence_example(data):
         'log_pressure_estimated_weight': many_log_pressure_estimated_weight,
         'cse_decision': many_cse_decision,
         'reward': many_reward,
-        'CategoricalProjectionNetwork_logits': many_logits
+        'CategoricalProjectionNetwork_logits': many_CategoricalProjectionNetwork_logits
     }
 
     feature_lists = tf.train.FeatureLists(feature_list=feature_dict)
@@ -502,9 +435,9 @@ def parse(serialized_proto):
 
 global_step = tf.compat.v1.train.get_or_create_global_step()
 
-num_exploration_factor         = 5
-num_epochs                     = 25
-num_policy_iterations          = 20
+num_exploration_factor         = 0
+num_epochs                     = 1
+num_policy_iterations          = 1000
 num_iterations                 = 300
 batch_size                     = 256
 train_sequence_length          = 16 # We have to have 2 or more for PPOAgent to work.
@@ -583,56 +516,50 @@ class LogItem:
     log_pressure_estimated_weight: any 
     cse_decision: any 
     reward: any 
+    CategoricalProjectionNetwork_logits: any
 
-def superpmi_collect_data(corpus_file_path, baseline, state, train_kind=1):
+def superpmi_collect_data(corpus_file_path, baseline, best_state, prev_state, train_kind=1):
     acc = []
 
-    #indices = list(map(lambda x: x.spmi_index, baseline)) 
-    indices = flatten(list(map(lambda x: [x.spmi_index for _ in range(x.numCand * num_exploration_factor)], baseline)))
+    indices = flatten(list(map(lambda x: [x.spmi_index] + [x.spmi_index for _ in range(x.numCand * num_exploration_factor)], baseline)))
 
-    data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=train_kind) # random exploration
+    data = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=train_kind)
 
     for i in range(len(baseline)):
-        item = baseline[i]
-        spmi_index = item.spmi_index
-        
-        #indices = [spmi_index for _ in range(num_explorations)]
-        #data_random = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=1) # random exploration
+        item_base = baseline[i]
 
-        item_best = state[spmi_index]
-        next_item_best = item_best
+        spmi_index = item_base.spmi_index
 
-        for item_random in data_random:
-            if item_random.spmi_index == spmi_index:
+        item_best = best_state[spmi_index]
+        item_prev = prev_state[spmi_index]
 
-                for j in range(len(item_random.log)):
-                    log_item_random = item_random.log[j]
-                    log_item_best = item_best.log[j]
+        for item in data:
+            if item.spmi_index == spmi_index:
 
-                    if item_random.perfScore < item_best.perfScore:
-                        if log_item_random.cse_decision == log_item_best.cse_decision:
-                            log_item_random.reward = 1.0
-                        else:
-                            log_item_random.reward = 0.0
-                    elif item_random.perfScore > item_best.perfScore:
-                        if log_item_random.cse_decision == log_item_best.cse_decision:
-                            log_item_random.reward = 0.0
-                        else:
-                            log_item_random.reward = -1.0
-                    else:
-                        if log_item_random.cse_decision == log_item_best.cse_decision:
-                            log_item_random.reward = 0.0
-                        else:
-                            log_item_random.reward = -1.0
+                reward = (item_best.perfScore - item.perfScore) / item_base.perfScore
 
-                if item_random.perfScore < item_best.perfScore:
-                    next_item_best = item_random
-                elif item_random.perfScore == item_best.perfScore and item_random.numCse < item_best.numCse:
-                    next_item_best = item_random
+                for j in range(len(item.log)):
+                    log_item = item.log[j]
+                    log_item.reward = reward
+                    # log_item_best = item_best.log[j]
+                    # log_item_prev = item_prev.log[j]
+
+                    # if item.perfScore < item_prev.perfScore:
+                    #     log_item.reward = 1.0
+                    # elif item.perfScore > item_prev.perfScore:
+                    #     log_item.reward = -1.0
+                    # else:
+                    #     log_item.reward = 0.0
+
+                if item.perfScore < item_best.perfScore:
+                    item_best = item
+                elif item.perfScore == item_best.perfScore and item.numCse < item_best.numCse:
+                    item_best = item
                     
-                acc = acc + item_random.log
+                acc = acc + [(item.log, reward)]
 
-        state[spmi_index] = next_item_best
+        best_state[spmi_index] = item_best
+        prev_state[spmi_index] = item_prev
 
     print('[mljit] Creating sequence examples...')
     return list(map(create_serialized_sequence_example, acc))
@@ -650,7 +577,7 @@ def filter_cse_methods(m):
     else:
         return False
 
-baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:50]
+baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:500]
 
 # ---------------------------------------
 
@@ -690,7 +617,7 @@ def compare_results(data_policy_num, data_num_improvements, data_num_regressions
             base = baseline[j]
 
             if curr.spmi_index == base.spmi_index:
-                best = state[curr.spmi_index]
+                best = best_state[curr.spmi_index]
 
                 print("")
                 print(f'spmi index {curr.spmi_index}')
@@ -718,11 +645,14 @@ def compare_results(data_policy_num, data_num_improvements, data_num_regressions
     return (data_policy_num, data_num_improvements, data_num_regressions)
 
 print(f'[mljit] Setting up baseline...')
-state = dict()
+best_state = dict()
 for x in baseline:
-    state[x.spmi_index] = x
-print(f'[mljit] Training baseline...')
-train(agent, superpmi_collect_data(corpus_file_path, baseline, state, train_kind=0))
+    best_state[x.spmi_index] = x
+prev_state = dict()
+for x in baseline:
+    prev_state[x.spmi_index] = x
+#print(f'[mljit] Training baseline...')
+#train(agent, superpmi_collect_data(corpus_file_path, baseline, state, train_kind=0))
 save_policy(collect_policy_saver, saved_collect_policy_path)
 save_policy(policy_saver, saved_policy_path)
 
@@ -738,7 +668,7 @@ data_num_regressions = new_data_num_regressions
 print(f'[mljit] Current step: {global_step.numpy()}')
 for policy_num in range(num_policy_iterations):
     print('[mljit] Collecting data...')
-    sequence_examples = superpmi_collect_data(corpus_file_path, baseline, state)
+    sequence_examples = superpmi_collect_data(corpus_file_path, baseline, best_state, prev_state)
     print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}...')
     train(agent, sequence_examples)
     save_policy(collect_policy_saver, saved_collect_policy_path)

@@ -9,6 +9,11 @@
 #include "tensorflow\c\c_api.h"
 #include "compiler.h"
 
+struct MLJIT_float_2
+{
+    float values[2];
+};
+
 struct MLJIT_CseActionLogItem
 {
     int64_t cse_index;
@@ -39,6 +44,7 @@ struct MLJIT_CseActionLogItem
     int64_t log_pressure_estimated_weight;
     int64_t cse_decision;
     float   reward;
+    MLJIT_float_2 CategoricalProjectionNetwork_logits;
 };
 
 class MLJIT_Policy
@@ -130,12 +136,15 @@ public:
     virtual int64_t GetOutput_cse_decision() = 0;
     virtual void    SetOutput_cse_decision(int64_t value) = 0;
 
+    virtual void LogActionExtra(MLJIT_CseActionLogItem* l) = 0;
+    virtual void SaveLoggedActionsAsJsonExtra(FILE* fptr, MLJIT_CseActionLogItem* l) = 0;
+
     void ResetLog()
     {
         loggedActionCount = 0;
     }
 
-    void LogInputsAndOutputs()
+    void LogAction()
     {
         MLJIT_CseActionLogItem l = {};
         MLJIT_RECORD_INPUT(cse_index);
@@ -166,6 +175,7 @@ public:
         MLJIT_RECORD_INPUT(log_pressure_estimated_weight);
         MLJIT_RECORD_OUTPUT(cse_decision);
         MLJIT_RECORD_INPUT(reward);
+        LogActionExtra(&l);
 
         loggedActions[loggedActionCount] = l;
         loggedActionCount++;
@@ -210,6 +220,7 @@ public:
             MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, cse_is_live_across_call_in_LSRA_ordering);
             MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, log_pressure_estimated_weight);
             MLJIT_WRITE_JSON_PROPERTY_INT64(fptr, cse_decision);
+            SaveLoggedActionsAsJsonExtra(fptr, l);
             MLJIT_WRITE_JSON_PROPERTY_FLOAT_NO_COMMA(fptr, reward);
             fprintf(fptr, "}");
             if (i != (loggedActionCount - 1))
@@ -241,6 +252,14 @@ public:
         int64_t* data = reinterpret_cast<int64_t*>(TF_TensorData(outputValues[index]));
         data[0]       = value;
     }
+
+    void LogActionExtra(MLJIT_CseActionLogItem* l) override
+    {
+    }
+
+    void SaveLoggedActionsAsJsonExtra(FILE* fptr, MLJIT_CseActionLogItem* l) override
+    {
+    }
 };
 
 class MLJIT_CseCollectPolicy : public MLJIT_CsePolicyBase
@@ -260,6 +279,26 @@ public:
         assert(strcmp(TF_OperationName(output[index].oper), "StatefulPartitionedCall") == 0);
         int64_t* data = reinterpret_cast<int64_t*>(TF_TensorData(outputValues[index]));
         data[0]       = value;
+    }
+
+    MLJIT_float_2 GetOutput_CategoricalProjectionNetwork_logits()
+    {
+        int index = 0; // collect_policy only
+        assert(strcmp(TF_OperationName(output[index].oper), "StatefulPartitionedCall") == 0);
+        MLJIT_float_2* data = reinterpret_cast<MLJIT_float_2*>(TF_TensorData(outputValues[index]));
+        return data[0];
+    }
+
+    void LogActionExtra(MLJIT_CseActionLogItem* l) override
+    {
+        l->CategoricalProjectionNetwork_logits = GetOutput_CategoricalProjectionNetwork_logits();
+    }
+
+    void SaveLoggedActionsAsJsonExtra(FILE* fptr, MLJIT_CseActionLogItem* l) override
+    {
+        auto value1 = l->CategoricalProjectionNetwork_logits.values[0];
+        auto value2 = l->CategoricalProjectionNetwork_logits.values[1];
+        fprintf(fptr, "\"CategoricalProjectionNetwork_logits\": [%f, %f],", value1, value2);
     }
 };
 
