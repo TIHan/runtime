@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from typing import Any, List, Sequence, Tuple, Callable, Optional, Dict
 from types import SimpleNamespace
+from tf_agents.metrics import tf_metrics
 from tf_agents.specs import tensor_spec, array_spec
 from tf_agents.trajectories import time_step, trajectory
 from tf_agents.agents.ppo import ppo_agent
@@ -227,9 +228,7 @@ def create_agent(num_epochs):
 
 # ---------------------------------------
 
-def create_sequence_example(data):
-
-    (log, _) = data
+def create_sequence_example(log):
 
     def log_to_feature_int64(x, f):
         return tf.train.Feature(int64_list=tf.train.Int64List(value=[np.int64(f(x))]))
@@ -485,7 +484,6 @@ def save_policy(policy_saver, path):
     policy_saver.save(path)
     print(f"[mljit] Saved policy in '{path}'!")
 
-
 @dataclass
 class LogItem:
     cse_index: any
@@ -556,7 +554,7 @@ def superpmi_collect_data(corpus_file_path, baseline, best_state, prev_state, tr
                 elif item.perfScore == item_best.perfScore and item.numCse < item_best.numCse:
                     item_best = item
                     
-                acc = acc + [(item.log, reward)]
+                acc = acc + [item.log]
 
         best_state[spmi_index] = item_best
         prev_state[spmi_index] = item_prev
@@ -577,7 +575,7 @@ def filter_cse_methods(m):
     else:
         return False
 
-baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:500]
+baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:1000]
 
 # ---------------------------------------
 
