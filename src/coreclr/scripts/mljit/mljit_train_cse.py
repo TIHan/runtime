@@ -5,6 +5,7 @@ import numpy as np
 import statistics
 import tensorflow as tf
 import json
+import itertools
 import mljit_superpmi
 
 import matplotlib
@@ -58,6 +59,7 @@ plt.ion()
 corpus_file_path  = os.environ['DOTNET_MLJitCorpusFile']
 saved_policy_path = os.environ['DOTNET_MLJitSavedPolicyPath']
 saved_collect_policy_path = os.environ['DOTNET_MLJitSavedCollectPolicyPath']
+log_path = os.environ['DOTNET_MLJitLogPath']
 
 def flatten(xss):
     return [x for xs in xss for x in xs]
@@ -435,6 +437,57 @@ def parse(serialized_proto):
 
 global_step = tf.compat.v1.train.get_or_create_global_step()
 
+train_summary_writer = tf.summary.create_file_writer(log_path, flush_millis=10000)
+train_summary_writer.set_as_default()
+summary_log_interval = 100
+
+data_action_mean = tf.keras.metrics.Mean()
+data_reward_mean = tf.keras.metrics.Mean()
+num_trajectories = tf.keras.metrics.Sum()
+
+def update_metrics(experience, monitor_dict):
+    """Updates metrics and exports to Tensorboard."""
+    if tf.math.equal(global_step % summary_log_interval, 0):
+      is_action = ~experience.is_boundary()
+
+      data_action_mean.update_state(
+          experience.action, sample_weight=is_action)
+      data_reward_mean.update_state(
+          experience.reward, sample_weight=is_action)
+      num_trajectories.update_state(experience.is_first())
+
+    # Check earlier rather than later if we should record summaries.
+    # TF also checks it, but much later. Needed to avoid looping through
+    # the dict so gave the if a bigger scope
+    if tf.summary.should_record_summaries():
+      with tf.name_scope('default/'):
+        tf.summary.scalar(
+            name='data_action_mean',
+            data=data_action_mean.result(),
+            step=global_step)
+        tf.summary.scalar(
+            name='data_reward_mean',
+            data=data_reward_mean.result(),
+            step=global_step)
+        tf.summary.scalar(
+            name='num_trajectories',
+            data=num_trajectories.result(),
+            step=global_step)
+
+      for name_scope, d in monitor_dict.items():
+        with tf.name_scope(name_scope + '/'):
+          for key, value in d.items():
+            tf.summary.scalar(name=key, data=value, step=global_step)
+
+      tf.summary.histogram(
+          name='reward', data=experience.reward, step=global_step)
+      
+def reset_metrics():
+    """Reset num_trajectories."""
+    num_trajectories.reset_states()
+
+# ---------------------------------------
+
 num_exploration_factor         = 0
 num_epochs                     = 25
 num_policy_iterations          = 1000
@@ -450,7 +503,8 @@ def create_dataset_iter(sequence_examples):
     return iter(compute_dataset(sequence_examples).repeat().prefetch(tf.data.AUTOTUNE))
 
 # Majority of this is from MLGO.
-def train(agent, sequence_examples):
+def train(agent, sequence_examples, monitor_dict):
+    reset_metrics()
     if sequence_examples:
         with tf.summary.record_if(lambda: tf.math.equal(
             global_step % 1000, 0)):
@@ -469,7 +523,8 @@ def train(agent, sequence_examples):
                         'in a batch, consider increase data or reduce batch size.'))
                     break
 
-                agent.train(experience)
+                loss = agent.train(experience)
+                update_metrics(experience, monitor_dict)
                 printProgressBar(count, num_iterations)
     else:
        logging.warning('No sequence examples were found to train.')
@@ -517,7 +572,20 @@ class LogItem:
     reward: any 
     CategoricalProjectionNetwork_logits: any
 
-def superpmi_collect_data(corpus_file_path, baseline, best_state, prev_state, train_kind=1):
+REWARD_QUANTILE_MONITOR = (0.1, 0.5, 1, 2, 3, 4, 5, 6, 8, 10, 20, 30, 40, 50,
+                           60, 70, 80, 90, 95, 99, 99.5, 99.9)
+
+def build_distribution_monitor(data: Sequence[float]) -> Dict[str, float]:
+  if not data:
+    return {}
+  quantiles = np.percentile(data, REWARD_QUANTILE_MONITOR, method='lower')
+  monitor_dict = {
+      f'p_{x}': y for (x, y) in zip(REWARD_QUANTILE_MONITOR, quantiles)
+  }
+  monitor_dict['mean'] = np.mean(data)
+  return monitor_dict
+
+def collect_data(corpus_file_path, baseline, best_state, prev_state, train_kind=1):
     acc = []
 
     indices = flatten(list(map(lambda x: [x.spmi_index] + [x.spmi_index for _ in range(x.numCand * num_exploration_factor)], baseline)))
@@ -546,8 +614,21 @@ def superpmi_collect_data(corpus_file_path, baseline, best_state, prev_state, tr
         best_state[spmi_index] = item_best
         prev_state[spmi_index] = item_prev
 
+    total_trajectory_length = sum(len(res.log) for res in data)
+
+    monitor_dict = {}
+    monitor_dict['default'] = {
+        'success_functions': len(data),
+        'total_trajectory_length': total_trajectory_length,
+    }
+    rewards = list(
+        itertools.chain.from_iterable(
+            [list(map(lambda x: x.reward, res.log)) for res in data]))
+    monitor_dict[
+        'reward_distribution'] = build_distribution_monitor(rewards)
+
     print('[mljit] Creating sequence examples...')
-    return list(map(create_serialized_sequence_example, acc))
+    return list(map(create_serialized_sequence_example, acc)), monitor_dict
 
 # ---------------------------------------
 
@@ -653,9 +734,9 @@ data_num_regressions = new_data_num_regressions
 print(f'[mljit] Current step: {global_step.numpy()}')
 for policy_num in range(num_policy_iterations):
     print('[mljit] Collecting data...')
-    sequence_examples = superpmi_collect_data(corpus_file_path, baseline, best_state, prev_state)
+    sequence_examples, monitor_dict = collect_data(corpus_file_path, baseline, best_state, prev_state)
     print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}...')
-    train(agent, sequence_examples)
+    train(agent, sequence_examples, monitor_dict)
     save_policy(collect_policy_saver, saved_collect_policy_path)
     save_policy(policy_saver, saved_policy_path)
     print(f'[mljit] Policy iteration complete at step: {global_step.numpy()}')

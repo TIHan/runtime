@@ -21,6 +21,7 @@ This assumes you know how to build the runtime and JIT.
     - From command-line: 
         - Run `pip3 install tf_agents`. This should install all the necessary dependencies for using the `tf_agents` library, including TensorFlow.
         - Run `pip3 install matplotlib`.
+        - Run `pip3 install tensorboard`.
 
 From these steps, you should be able to build the JIT and run the python script `src/coreclr/scripts/mljit_train_cse.py` without dependency issues. For instructions on how to run `mljit_train_cse.py`, see below.
 
