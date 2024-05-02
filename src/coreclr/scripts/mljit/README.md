@@ -80,6 +80,19 @@ DOTNET_MLJitLogPath=C:\work\mljit
     - Training will commence, it shouldn't take very long given we are only using 50 methods.
     - Once training is complete, it will then compare results from the baseline to see how many improvements and regressions were made from the final policy.
 
+## TensorBoard
+
+From [TensorFlow](https://www.tensorflow.org/tensorboard), it describes TensorBoard as:
+```
+TensorBoard provides the visualization and tooling needed for machine learning experimentation
+```
+
+Instructions:
+- While training, open a new command prompt.
+- Set environment variable `DOTNET_MLJitLogPath` to the same path as when you started training.
+- Run `tensorboard --logdir %DOTNET_MLJitLogPath%`.
+- When TensorBoard launches, it will print a URL, example: `http://localhost:6006/`. Go to that URL and you will see all the information about your training session.
+
 ## Oustanding Questions
 
 Training doesn't work as intended. We could try to figure it out if we can answer some of the following questions:
