@@ -96,13 +96,13 @@ observation_spec_and_preprocessing_layers = [
     (tf.TensorSpec(dtype=tf.int64, shape=(), name='cse_index'), 
         tf.keras.layers.Identity()),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_cost_ex'), 
-        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)),
+        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_use_count_weighted_log'), 
-        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)),
+        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_def_count_weighted_log'), 
-        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)),
+        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_cost_sz'), 
-        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)),
+        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)),
     (tf.TensorSpec(dtype=tf.int64, shape=(), name='cse_use_count'), 
         tf.keras.layers.Identity()),
     (tf.TensorSpec(dtype=tf.int64, shape=(), name='cse_def_count'), 
@@ -132,11 +132,11 @@ observation_spec_and_preprocessing_layers = [
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_has_call', minimum=0, maximum=1), 
         tf.keras.layers.Identity()),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='log_cse_use_count_weighted_times_cost_ex'), 
-        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)),
+        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='log_cse_use_count_weighted_times_num_local_occurrences'), 
-        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)),
+        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_distance'), 
-        tf.keras.layers.Rescaling(scale=10000, offset=0, dtype=tf.int64)), # (max postorder num - min postorder num) / num BBs
+        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)), # (max postorder num - min postorder num) / num BBs
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_containable', minimum=0, maximum=1), 
         tf.keras.layers.Identity()),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_cheap_containable', minimum=0, maximum=1), 
@@ -175,6 +175,7 @@ def create_agent(num_epochs):
         
         # Settings below match MLGO, most of the settings are actually the default values of ActorDistributionNetwork.
        # fc_layer_params=(40, 40, 20),
+        fc_layer_params=(100, 100, 100),
         dropout_layer_params=None,
         activation_fn=tf.keras.activations.relu)
 
@@ -193,11 +194,11 @@ def create_agent(num_epochs):
         # optimizer=tf.keras.optimizers.Adam(),
         # num_epochs=num_epochs)
         # Settings below match MLGO, most of the settings are actually the default values of PPOAgent.
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
+        optimizer=tf.keras.optimizers.Adam(), #(learning_rate=0.00003, epsilon=0.0003125),
         importance_ratio_clipping=0.2,
         lambda_value=0.0,
         discount_factor=0.0,
-        entropy_regularization=0.003,
+        entropy_regularization=0.01, #0.003,
         policy_l2_reg=0.000001,
         value_function_l2_reg=0.0,
         shared_vars_l2_reg=0.0,
@@ -435,7 +436,7 @@ def parse(serialized_proto):
 global_step = tf.compat.v1.train.get_or_create_global_step()
 
 num_exploration_factor         = 0
-num_epochs                     = 1
+num_epochs                     = 25
 num_policy_iterations          = 1000
 num_iterations                 = 300
 batch_size                     = 256
@@ -533,21 +534,7 @@ def superpmi_collect_data(corpus_file_path, baseline, best_state, prev_state, tr
 
         for item in data:
             if item.spmi_index == spmi_index:
-
-                reward = (item_best.perfScore - item.perfScore) / item_base.perfScore
-
-                for j in range(len(item.log)):
-                    log_item = item.log[j]
-                    log_item.reward = reward
-                    # log_item_best = item_best.log[j]
-                    # log_item_prev = item_prev.log[j]
-
-                    # if item.perfScore < item_prev.perfScore:
-                    #     log_item.reward = 1.0
-                    # elif item.perfScore > item_prev.perfScore:
-                    #     log_item.reward = -1.0
-                    # else:
-                    #     log_item.reward = 0.0
+                item.log[len(item.log) - 1].reward = (item_best.perfScore - item.perfScore) / item_base.perfScore
 
                 if item.perfScore < item_best.perfScore:
                     item_best = item
@@ -571,7 +558,7 @@ if not mljit_superpmi.mldump_file_exists():
 
 def filter_cse_methods(m):
     if m.numCse > 0:
-        return True and m.is_valid
+        return True and m.is_valid and m.perfScore > 0
     else:
         return False
 
