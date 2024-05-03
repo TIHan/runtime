@@ -177,14 +177,14 @@ def create_agent(num_epochs):
         
         # Settings below match MLGO, most of the settings are actually the default values of ActorDistributionNetwork.
        # fc_layer_params=(40, 40, 20),
-        fc_layer_params=(100, 100, 100),
-        dropout_layer_params=None,
-        activation_fn=tf.keras.activations.relu)
+        fc_layer_params=(100, 100, 100)
+        )
 
     critic_network = value_network.ValueNetwork(
       time_step_spec.observation,
       preprocessing_layers=preprocessing_layers,
-      preprocessing_combiner=preprocessing_combiner)
+      preprocessing_combiner=preprocessing_combiner
+      )
 
     #critic_network = ConstantValueNetwork(time_step_spec.observation)
 
@@ -489,7 +489,7 @@ def reset_metrics():
 # ---------------------------------------
 
 num_exploration_factor         = 0
-num_epochs                     = 25
+num_epochs                     = 1
 num_policy_iterations          = 1000
 num_iterations                 = 300
 batch_size                     = 256
@@ -602,7 +602,8 @@ def collect_data(corpus_file_path, baseline, best_state, prev_state, train_kind=
 
         for item in data:
             if item.spmi_index == spmi_index:
-                item.log[len(item.log) - 1].reward = (item_best.perfScore - item.perfScore) / item_base.perfScore
+                reward = ((item_best.perfScore - item.perfScore) / item_base.perfScore) * 10.0
+                item.log[len(item.log) - 1].reward = reward
 
                 if item.perfScore < item_best.perfScore:
                     item_best = item
@@ -671,7 +672,7 @@ def plot_results(data_step_num, data_num_improvements, data_num_regressions):
     plt.pause(0.0001)
 
 # Compare Results
-print_verbose_results = False
+print_verbose_results = True
 def compare_results(data_step_num, data_num_improvements, data_num_regressions, step_num):
     print('[mljit] Comparing results...')
     policy_result = mljit_superpmi.collect_data(corpus_file_path, baseline_indices, train_kind=2) # policy
