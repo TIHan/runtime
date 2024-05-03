@@ -638,10 +638,7 @@ if not mljit_superpmi.mldump_file_exists():
     print('[mljit] Finished producing mldump.txt')
 
 def filter_cse_methods(m):
-    if m.numCse > 0:
-        return True and m.is_valid and m.perfScore > 0
-    else:
-        return False
+    return m.is_valid and m.numCse > 0 and m.perfScore > 0
 
 baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:1000]
 
@@ -649,29 +646,33 @@ baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:1000]
 
 # Training
 
+eval_only = False
+
 agent = create_agent(num_epochs)
 policy_saver = create_policy_saver(agent)
 collect_policy_saver = create_collect_policy_saver(agent)
 
-# Save initial policy.
-save_policy(collect_policy_saver, saved_collect_policy_path)
-save_policy(policy_saver, saved_policy_path)
+if not eval_only:
+    # Save initial policy.
+    save_policy(collect_policy_saver, saved_collect_policy_path)
+    save_policy(policy_saver, saved_policy_path)
 
 baseline_indices = list(map(lambda x: x.spmi_index, baseline))
 baseline = mljit_superpmi.collect_data(corpus_file_path, baseline_indices, train_kind=0)
 
-def plot_results(data_policy_num, data_num_improvements, data_num_regressions):
+def plot_results(data_step_num, data_num_improvements, data_num_regressions):
     plt.figure(1)
     plt.clf()
     plt.title('Training...')
-    plt.xlabel('Policy Iteration')
-    plt.plot(data_policy_num, data_num_improvements, label = "Improvements")
-    plt.plot(data_policy_num, data_num_regressions, label = "Regressions")
+    plt.xlabel('Step')
+    plt.plot(data_step_num, data_num_improvements, label = "Improvements")
+    plt.plot(data_step_num, data_num_regressions, label = "Regressions")
     plt.legend()
     plt.pause(0.0001)
 
 # Compare Results
-def compare_results(data_policy_num, data_num_improvements, data_num_regressions, policy_num):
+print_verbose_results = False
+def compare_results(data_step_num, data_num_improvements, data_num_regressions, step_num):
     print('[mljit] Comparing results...')
     policy_result = mljit_superpmi.collect_data(corpus_file_path, baseline_indices, train_kind=2) # policy
 
@@ -685,30 +686,34 @@ def compare_results(data_policy_num, data_num_improvements, data_num_regressions
             if curr.spmi_index == base.spmi_index:
                 best = best_state[curr.spmi_index]
 
-                print("")
-                print(f'spmi index {curr.spmi_index}')
+                if print_verbose_results:
+                    print("")
+                    print(f'spmi index {curr.spmi_index}')
                 if curr.perfScore < base.perfScore:       
                     num_improvements = num_improvements + 1
                 elif curr.perfScore > base.perfScore:
                     num_regressions = num_regressions + 1
 
-                for k in range(len(curr.log)):
-                    best_item = best.log[k]
-                    curr_item = curr.log[k]
-                    base_item = base.log[k]
-                    print(f'best decision: {best_item.cse_decision}, base decision: {base_item.cse_decision}, curr decision: {curr_item.cse_decision}')
-                print(f'best score: {best.perfScore}, base score: {base.perfScore}, curr score: {curr.perfScore}')
+                if print_verbose_results:
+                    for k in range(len(curr.log)):
+                        best_item = best.log[k]
+                        curr_item = curr.log[k]
+                        base_item = base.log[k]
+                        print(f'best decision: {best_item.cse_decision}, base decision: {base_item.cse_decision}, curr decision: {curr_item.cse_decision}')
+                    print(f'best score: {best.perfScore}, base score: {base.perfScore}, curr score: {curr.perfScore}')
 
-    print('---------')
+    print('----- Evaluation Policy Results ----')
+    print(f'Step:         {step_num}')
     print(f'Improvements: {num_improvements}')
-    print(f'Regressions: {num_regressions}')
+    print(f'Regressions:  {num_regressions}')
+    print('------------------------------------')
 
-    data_policy_num = data_policy_num + [int(policy_num)]
+    data_step_num = data_step_num + [int(step_num)]
     data_num_improvements = data_num_improvements + [num_improvements]
     data_num_regressions = data_num_regressions + [num_regressions]
 
-    plot_results(data_policy_num, data_num_improvements, data_num_regressions)
-    return (data_policy_num, data_num_improvements, data_num_regressions)
+    plot_results(data_step_num, data_num_improvements, data_num_regressions)
+    return (data_step_num, data_num_improvements, data_num_regressions)
 
 print(f'[mljit] Setting up baseline...')
 best_state = dict()
@@ -717,33 +722,30 @@ for x in baseline:
 prev_state = dict()
 for x in baseline:
     prev_state[x.spmi_index] = x
-#print(f'[mljit] Training baseline...')
-#train(agent, superpmi_collect_data(corpus_file_path, baseline, state, train_kind=0))
-save_policy(collect_policy_saver, saved_collect_policy_path)
-save_policy(policy_saver, saved_policy_path)
 
-data_policy_num = []
+data_step_num = []
 data_num_improvements = []
 data_num_regressions = []
 
-(new_data_policy_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_policy_num, data_num_improvements, data_num_regressions, 0)
-data_policy_num = new_data_policy_num
+(new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, 0)
+data_step_num = new_data_step_num
 data_num_improvements = new_data_num_improvements
 data_num_regressions = new_data_num_regressions
 
-print(f'[mljit] Current step: {global_step.numpy()}')
-for policy_num in range(num_policy_iterations):
-    print('[mljit] Collecting data...')
-    sequence_examples, monitor_dict = collect_data(corpus_file_path, baseline, best_state, prev_state)
-    print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}...')
-    train(agent, sequence_examples, monitor_dict)
-    save_policy(collect_policy_saver, saved_collect_policy_path)
-    save_policy(policy_saver, saved_policy_path)
-    print(f'[mljit] Policy iteration complete at step: {global_step.numpy()}')
-    (new_data_policy_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_policy_num, data_num_improvements, data_num_regressions, policy_num + 1)
-    data_policy_num = new_data_policy_num
-    data_num_improvements = new_data_num_improvements
-    data_num_regressions = new_data_num_regressions
+if not eval_only:
+    print(f'[mljit] Current step: {global_step.numpy()}')
+    for policy_num in range(num_policy_iterations):
+        print('[mljit] Collecting data...')
+        sequence_examples, monitor_dict = collect_data(corpus_file_path, baseline, best_state, prev_state)
+        print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}...')
+        train(agent, sequence_examples, monitor_dict)
+        save_policy(collect_policy_saver, saved_collect_policy_path)
+        save_policy(policy_saver, saved_policy_path)
+        print(f'[mljit] Policy iteration complete at step: {global_step.numpy()}')
+        (new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, global_step.numpy())
+        data_step_num = new_data_step_num
+        data_num_improvements = new_data_num_improvements
+        data_num_regressions = new_data_num_regressions
 
 # ---------------------------------------
 
