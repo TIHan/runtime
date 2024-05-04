@@ -7,11 +7,13 @@ import tensorflow as tf
 import json
 import itertools
 import mljit_superpmi
+import functools
 
 import matplotlib
 import matplotlib.pyplot as plt
 
 from dataclasses import dataclass
+from collections import defaultdict
 from typing import Any, List, Sequence, Tuple, Callable, Optional, Dict
 from types import SimpleNamespace
 from tf_agents.metrics import tf_metrics
@@ -25,9 +27,12 @@ from tf_agents.networks import network
 from tf_agents.networks import q_rnn_network
 from tf_agents.utils import nest_utils
 from tf_agents.networks import actor_distribution_network, value_network
-from tf_agents.policies import PolicySaver, random_tf_policy
+from tf_agents.policies import PolicySaver, random_tf_policy, py_tf_policy
 from tf_agents.utils import common as common_utils
 from absl import logging
+
+def for_all(predicate, xs):
+    return all(predicate(x) for x in xs)
 
 # From https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters
 # Print iterations progress
@@ -168,7 +173,7 @@ action_spec = tensor_spec.BoundedTensorSpec(
 
 preprocessing_combiner = tf.keras.layers.Add()
 
-def create_agent(num_epochs):
+def create_agent():
     actor_network = actor_distribution_network.ActorDistributionNetwork(
         input_tensor_spec=time_step_spec.observation,
         output_tensor_spec=action_spec,
@@ -177,7 +182,7 @@ def create_agent(num_epochs):
         
         # Settings below match MLGO, most of the settings are actually the default values of ActorDistributionNetwork.
        # fc_layer_params=(40, 40, 20),
-        fc_layer_params=(100, 100, 100)
+        fc_layer_params=(200, 100, 50)
         )
 
     critic_network = value_network.ValueNetwork(
@@ -193,19 +198,17 @@ def create_agent(num_epochs):
         action_spec=action_spec,
         actor_net=actor_network,
         value_net=critic_network,
-        # optimizer=tf.keras.optimizers.Adam(),
-        # num_epochs=num_epochs)
+        num_epochs=1,
         # Settings below match MLGO, most of the settings are actually the default values of PPOAgent.
-        optimizer=tf.keras.optimizers.Adam(), #(learning_rate=0.00003, epsilon=0.0003125),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
         importance_ratio_clipping=0.2,
         lambda_value=0.0,
         discount_factor=0.0,
-        entropy_regularization=0.01, #0.003,
-        policy_l2_reg=0.000001,
+        entropy_regularization=0.01,#0.003,
+        policy_l2_reg=0.01,#0.000001,
         value_function_l2_reg=0.0,
         shared_vars_l2_reg=0.0,
         value_pred_loss_coef=0.0,
-        num_epochs=num_epochs,
         use_gae=False,
         use_td_lambda_return=False,
         normalize_rewards=False,
@@ -388,7 +391,6 @@ def process_parsed_sequence_and_get_policy_info(parsed_sequence: Dict[str, Any])
 
 # From MLGO.
 def parse(serialized_proto):
-    print('[mljit] trajectory.from_episode...')
     # We copy through all context features at each frame, so even though we know
     # they don't change from frame to frame, they are still sequence features
     # and stored in the feature list.
@@ -430,7 +432,8 @@ def parse(serialized_proto):
           observation=parsed_sequence,
           action=action,
           policy_info=policy_info,
-          reward=reward)
+          reward=reward,
+          discount=None)
       return full_trajectory
     
 # ---------------------------------------
@@ -488,46 +491,42 @@ def reset_metrics():
 
 # ---------------------------------------
 
-num_exploration_factor         = 0
-num_epochs                     = 1
-num_policy_iterations          = 1000
-num_iterations                 = 300
-batch_size                     = 256
-train_sequence_length          = 16 # We have to have 2 or more for PPOAgent to work.
-trajectory_shuffle_buffer_size = 1024
+num_max_steps   = 1000000
+num_iterations  = 1000
 
-def compute_dataset(sequence_examples):
+def compute_dataset(sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size):
     return tf.data.Dataset.from_tensor_slices(sequence_examples).map(parse).unbatch().batch(train_sequence_length, drop_remainder=True).cache().shuffle(trajectory_shuffle_buffer_size).batch(batch_size, drop_remainder=True)
 
-def create_dataset_iter(sequence_examples):
-    return iter(compute_dataset(sequence_examples).repeat().prefetch(tf.data.AUTOTUNE))
+def create_dataset(sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size):
+    return compute_dataset(sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)
+
+def create_dataset_iter(dataset):
+    return iter(dataset.repeat().prefetch(tf.data.AUTOTUNE))
 
 # Majority of this is from MLGO.
-def train(agent, sequence_examples, monitor_dict):
+def train(agent, dataset, monitor_dict):
     reset_metrics()
-    if sequence_examples:
-        with tf.summary.record_if(lambda: tf.math.equal(
-            global_step % 1000, 0)):
-            dataset_iter = create_dataset_iter(sequence_examples)
-            count = 0
-            for _ in range(num_iterations):
-                # When the data is not enough to fill in a batch, next(dataset_iter)
-                # will throw StopIteration exception, logging a warning message instead
-                # of killing the training when it happens.
-                try:
-                    experience = next(dataset_iter)
-                    count = count + 1
-                except StopIteration:
-                    logging.warning(
-                        ('Skipped training because do not have enough data to fill '
-                        'in a batch, consider increase data or reduce batch size.'))
-                    break
+    with tf.summary.record_if(lambda: tf.math.equal(
+        global_step % 1000, 0)):
+        dataset_iter = create_dataset_iter(dataset)
+        count = 0
+        for _ in range(num_iterations):
+            # When the data is not enough to fill in a batch, next(dataset_iter)
+            # will throw StopIteration exception, logging a warning message instead
+            # of killing the training when it happens.
+            try:
+                experience = next(dataset_iter)
+                #tf.print(experience, summarize=64)
+                count = count + 1
+            except StopIteration:
+                logging.warning(
+                    ('Skipped training because do not have enough data to fill '
+                    'in a batch, consider increase data or reduce batch size.'))
+                break
 
-                loss = agent.train(experience)
-                update_metrics(experience, monitor_dict)
-                printProgressBar(count, num_iterations)
-    else:
-       logging.warning('No sequence examples were found to train.')
+            loss = agent.train(experience)
+            update_metrics(experience, monitor_dict)
+            printProgressBar(count, num_iterations)
 
 def create_policy_saver(agent):
     return PolicySaver(agent.policy, batch_size=1, use_nest_path_signatures=False)
@@ -588,7 +587,7 @@ def build_distribution_monitor(data: Sequence[float]) -> Dict[str, float]:
 def collect_data(corpus_file_path, baseline, best_state, prev_state, train_kind=1):
     acc = []
 
-    indices = flatten(list(map(lambda x: [x.spmi_index] + [x.spmi_index for _ in range(x.numCand * num_exploration_factor)], baseline)))
+    indices = flatten(list(map(lambda x: [x.spmi_index], baseline)))
 
     data = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=train_kind)
 
@@ -602,7 +601,30 @@ def collect_data(corpus_file_path, baseline, best_state, prev_state, train_kind=
 
         for item in data:
             if item.spmi_index == spmi_index:
-                reward = ((item_best.perfScore - item.perfScore) / item_base.perfScore) * 10.0
+                reward = 0.0 #((item_best.perfScore - item.perfScore) / item_base.perfScore) * 10.0
+
+                if item.perfScore < item_best.perfScore:
+                    if item_best.perfScore == item_base.perfScore:
+                        reward = 1.0
+                    else:
+                        reward = 10.0
+                elif item.perfScore == item_best.perfScore:
+                    if item_best.perfScore == item_base.perfScore:
+                        reward = 0.0
+                    else:
+                        reward = 10.0
+                elif item.perfScore < item_base.perfScore:
+                    reward = 1.0
+                elif item.perfScore == item_base.perfScore:
+                    reward = 0.0
+                else:
+                    all_ones = for_all(lambda x: x.cse_decision == 1, item.log)
+                    all_zeroes = for_all(lambda x: x.cse_decision == 0, item.log)
+                    if all_ones or all_zeroes:
+                        reward = -10.0
+                    else:
+                        reward = -1.0
+                
                 item.log[len(item.log) - 1].reward = reward
 
                 if item.perfScore < item_best.perfScore:
@@ -649,7 +671,7 @@ baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:1000]
 
 eval_only = False
 
-agent = create_agent(num_epochs)
+agent = create_agent()
 policy_saver = create_policy_saver(agent)
 collect_policy_saver = create_collect_policy_saver(agent)
 
@@ -672,10 +694,13 @@ def plot_results(data_step_num, data_num_improvements, data_num_regressions):
     plt.pause(0.0001)
 
 # Compare Results
-print_verbose_results = True
+print_verbose_results = False
 def compare_results(data_step_num, data_num_improvements, data_num_regressions, step_num):
     print('[mljit] Comparing results...')
     policy_result = mljit_superpmi.collect_data(corpus_file_path, baseline_indices, train_kind=2) # policy
+
+    total_perf_score_improvement_diff = 0.0
+    total_perf_score_regression_diff = 0.0
 
     num_improvements = 0
     num_regressions = 0
@@ -692,8 +717,13 @@ def compare_results(data_step_num, data_num_improvements, data_num_regressions, 
                     print(f'spmi index {curr.spmi_index}')
                 if curr.perfScore < base.perfScore:       
                     num_improvements = num_improvements + 1
+                    total_perf_score_improvement_diff = total_perf_score_improvement_diff + (base.perfScore - curr.perfScore)
                 elif curr.perfScore > base.perfScore:
                     num_regressions = num_regressions + 1
+                    total_perf_score_regression_diff = total_perf_score_regression_diff + (curr.perfScore - base.perfScore)
+
+                if curr.perfScore < best.perfScore:
+                    best_state[curr.spmi_index] = curr
 
                 if print_verbose_results:
                     for k in range(len(curr.log)):
@@ -704,9 +734,11 @@ def compare_results(data_step_num, data_num_improvements, data_num_regressions, 
                     print(f'best score: {best.perfScore}, base score: {base.perfScore}, curr score: {curr.perfScore}')
 
     print('----- Evaluation Policy Results ----')
-    print(f'Step:         {step_num}')
-    print(f'Improvements: {num_improvements}')
-    print(f'Regressions:  {num_regressions}')
+    print(f'Step:              {step_num}')
+    print(f'Improvements:      {num_improvements}')
+    print(f'Improvement Score: {total_perf_score_improvement_diff}')
+    print(f'Regressions:       {num_regressions}')
+    print(f'Regression Score:  {total_perf_score_regression_diff}')
     print('------------------------------------')
 
     data_step_num = data_step_num + [int(step_num)]
@@ -733,23 +765,61 @@ data_step_num = new_data_step_num
 data_num_improvements = new_data_num_improvements
 data_num_regressions = new_data_num_regressions
 
+# baseline_groups = defaultdict(list)
+
+# for x in baseline:
+#     baseline_groups[x.numCand].append(x)
+
+best_ratio = -1000000.0
 if not eval_only:
-    print(f'[mljit] Current step: {global_step.numpy()}')
-    for policy_num in range(num_policy_iterations):
+    while global_step.numpy() < num_max_steps:
+        print(f'[mljit] Best ratio: {best_ratio}')
+        print(f'[mljit] Current step: {global_step.numpy()}')
+
         print('[mljit] Collecting data...')
         sequence_examples, monitor_dict = collect_data(corpus_file_path, baseline, best_state, prev_state)
-        print(f'[mljit] Training with the number of sequence examples: {len(sequence_examples)}...')
-        train(agent, sequence_examples, monitor_dict)
-        save_policy(collect_policy_saver, saved_collect_policy_path)
-        save_policy(policy_saver, saved_policy_path)
-        print(f'[mljit] Policy iteration complete at step: {global_step.numpy()}')
+        dataset = create_dataset(sequence_examples, train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=1024)
+        train(agent, dataset, monitor_dict)
+
+        # datasets = []
+        # for k, v in baseline_groups.items():
+        #     print('[mljit] Collecting data...')
+        #     sequence_examples, monitor_dict = collect_data(corpus_file_path, v, best_state, prev_state)
+
+        #     train_sequence_length = k
+        #     batch_size = len(sequence_examples)
+
+        #     if k == 1:
+        #         train_sequence_length = len(sequence_examples)
+        #         batch_size = 1
+
+        #     dataset = create_dataset(sequence_examples, train_sequence_length=train_sequence_length, batch_size=batch_size, trajectory_shuffle_buffer_size=1024)
+        #     datasets = datasets + [dataset]
+
+        # final_dataset = functools.reduce(lambda x, y: x.concatenate(y), datasets)
+        # train(agent, final_dataset, monitor_dict)
+
+        if not eval_only:
+            save_policy(policy_saver, saved_policy_path)
+            save_policy(collect_policy_saver, saved_collect_policy_path)
         (new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, global_step.numpy())
+        num_improvements = new_data_num_improvements[len(new_data_num_improvements) - 1]
+        num_regressions = new_data_num_regressions[len(new_data_num_regressions) - 1]
+
+        if not eval_only:
+            ratio = float(num_improvements)
+            if num_regressions != 0:
+                ratio = float(num_improvements) / float(num_regressions)
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_policy_saver = create_policy_saver(agent)
+                save_policy(best_policy_saver, os.path.join(saved_policy_path, '../best_policy'))
         data_step_num = new_data_step_num
         data_num_improvements = new_data_num_improvements
         data_num_regressions = new_data_num_regressions
 
 # ---------------------------------------
 
-print(f'[mljit] Finished!')
+print(f'[mljit] Finished! Best ratio: {best_ratio}')
 plt.ioff()
 plt.show()
