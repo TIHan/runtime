@@ -185,13 +185,13 @@ def create_agent():
         fc_layer_params=(200, 100, 50)
         )
 
-    critic_network = value_network.ValueNetwork(
-      time_step_spec.observation,
-      preprocessing_layers=preprocessing_layers,
-      preprocessing_combiner=preprocessing_combiner
-      )
+    # critic_network = value_network.ValueNetwork(
+    #   time_step_spec.observation,
+    #   preprocessing_layers=preprocessing_layers,
+    #   preprocessing_combiner=preprocessing_combiner
+    #   )
 
-    #critic_network = ConstantValueNetwork(time_step_spec.observation)
+    critic_network = ConstantValueNetwork(time_step_spec.observation)
 
     agent = ppo_agent.PPOAgent(
         time_step_spec=time_step_spec,
@@ -204,8 +204,8 @@ def create_agent():
         importance_ratio_clipping=0.2,
         lambda_value=0.0,
         discount_factor=0.0,
-        entropy_regularization=0.01,#0.003,
-        policy_l2_reg=0.01,#0.000001,
+        entropy_regularization=0.003,
+        policy_l2_reg=0.000001,
         value_function_l2_reg=0.0,
         shared_vars_l2_reg=0.0,
         value_pred_loss_coef=0.0,
@@ -220,7 +220,7 @@ def create_agent():
         initial_adaptive_kl_beta=1.0,
         adaptive_kl_target=0.01,
         adaptive_kl_tolerance=0.3,
-        gradient_clipping=None,
+        gradient_clipping=0.1,
         value_clipping=None,
         check_numerics=False,
         compute_value_and_advantage_in_train=True,
@@ -492,7 +492,7 @@ def reset_metrics():
 # ---------------------------------------
 
 num_max_steps   = 1000000
-num_iterations  = 1000
+num_iterations  = 300
 
 def compute_dataset(sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size):
     return tf.data.Dataset.from_tensor_slices(sequence_examples).map(parse).unbatch().batch(train_sequence_length, drop_remainder=True).cache().shuffle(trajectory_shuffle_buffer_size).batch(batch_size, drop_remainder=True)
@@ -663,7 +663,7 @@ if not mljit_superpmi.mldump_file_exists():
 def filter_cse_methods(m):
     return m.is_valid and m.numCse > 0 and m.perfScore > 0
 
-baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:1000]
+baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:2000]
 
 # ---------------------------------------
 
