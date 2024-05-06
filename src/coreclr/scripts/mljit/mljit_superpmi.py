@@ -73,17 +73,15 @@ if superpmi_process_count == 0:
 @dataclass
 class Method:
     is_valid: bool
-    perfScore: float
-    numCse: int
-    numCand: int
-    seq: any
+    perf_score: float
+    num_cse_usages: int
+    num_cse_candidates: int
+    cse_seq: any
     spmi_index: int
-    # param: str
-    # likelihood: str
-    # baseLikelihood: str
-    # feature: str
-    codeSize: float
+    code_size: float
     log: any
+    total_reward: float
+    total_count: int
 
 def create_superpmi_process(clrjit_dll_path, mch_path, mljit_enabled):
     l = threading.Event()
@@ -148,73 +146,69 @@ def mldump_file_exists():
     return os.path.isfile(mldump_txt)
 
 def parse_mldump_line(line):
-    perfScorePattern        = regex('(PerfScore|perf score) (\d+(\.\d+)?)', line, 2)
-    numCsePattern           = regex('num cse ([0-9]{1,})', line, 1)
-    numCandPattern          = regex('num cand ([0-9]{1,})', line, 1)
-    seqPattern              = regex('seq ([0-9,]*)', line, 1)
-    spmiPattern             = regex('spmi index ([0-9]{1,})', line, 1)
-    # paramPattern            = regex('updatedparams ([0-9\.,-e]{1,})', line, 1)
-    # likelihoodPattern       = regex('likelihoods ([0-9\.,-e]{1,})', line, 1)
-    # baseLikelihoodPattern   = regex('baseLikelihoods ([0-9\.,-e]{1,})', line, 1)
-    # featurePattern          = regex('features,([0-9]*,CSE #[0-9][0-9],[0-9\.,-e]{1,})', line)
-    codeSizePattern         = regex('Total bytes of code ([0-9]{1,})', line, 1)
+    perf_score_pattern        = regex('(PerfScore|perf score) (\d+(\.\d+)?)', line, 2)
+    num_cse_usagesPattern     = regex('num cse ([0-9]{1,})', line, 1)
+    num_cse_candidatesPattern = regex('num cand ([0-9]{1,})', line, 1)
+    cse_seq_pattern           = regex('seq ([0-9,]*)', line, 1)
+    spmi_index_pattern        = regex('spmi index ([0-9]{1,})', line, 1)
+    code_size_pattern         = regex('Total bytes of code ([0-9]{1,})', line, 1)
 
     is_valid = True
 
-    seq = []
-    if seqPattern:
-        seq = list(map(lambda x: int(x), seqPattern.replace(' ', '').split(',')))
+    cse_seq = []
+    if cse_seq_pattern:
+        cse_seq = list(map(lambda x: int(x), cse_seq_pattern.replace(' ', '').split(',')))
 
-    perfScore = 10000000000.0
-    if perfScorePattern:
+    perf_score = 10000000000.0
+    if perf_score_pattern:
         try:
-            perfScore = float(perfScorePattern)
+            perf_score = float(perf_score_pattern)
         except Exception:
-            #print(f'There was an error when parsing the \'PerfScore\' from the JIT output: {perfScorePattern}')
+            #print(f'There was an error when parsing the \'perf_score\' from the JIT output: {perf_score_pattern}')
             is_valid = False
     else:
-        #print(f'\'PerfScore\' does not exist.')
+        #print(f'\'(PerfScore|perf score)\' does not exist.')
         is_valid = False
 
-    codeSize = 10000000000.0
-    if codeSizePattern:
+    code_size = 10000000000.0
+    if code_size_pattern:
         try:
-            codeSize = float(codeSizePattern)
+            code_size = float(code_size_pattern)
         except Exception:
-            #print(f'There was an error when parsing the \'Total bytes of code\' from the JIT output: {codeSizePattern}')
+            #print(f'There was an error when parsing the \'Total bytes of code\' from the JIT output: {code_size_pattern}')
             is_valid = False
     else:
         #print(f'\'Total bytes of code\' does not exist.')
         is_valid = False
 
-    numCse = 0
-    if numCsePattern:
+    num_cse_usages = 0
+    if num_cse_usagesPattern:
         try:
-            numCse = int(numCsePattern)
+            num_cse_usages = int(num_cse_usagesPattern)
         except Exception:
-            #print(f'There was an error when parsing the \'num cse\' from the JIT output: {numCsePattern}')
+            #print(f'There was an error when parsing the \'num cse\' from the JIT output: {num_cse_usages_pattern}')
             is_valid = False
     else:
         #print(f'\'num cse\' does not exist.')
         is_valid = False
 
-    numCand = 0
-    if numCandPattern:
+    num_cse_candidates = 0
+    if num_cse_candidatesPattern:
         try:
-            numCand = int(numCandPattern)
+            num_cse_candidates = int(num_cse_candidatesPattern)
         except Exception:
-            #print(f'There was an error when parsing the \'num cand\' from the JIT output: {numCandPattern}')
+            #print(f'There was an error when parsing the \'num cand\' from the JIT output: {num_cse_candidates_pattern}')
             is_valid = False
     else:
         #print(f'\'num cand\' does not exist.')
         is_valid = False
 
     spmi_index = -1
-    if numCsePattern:
+    if num_cse_usagesPattern:
         try:
-            spmi_index = int(spmiPattern)
+            spmi_index = int(spmi_index_pattern)
         except Exception:
-            #print(f'There was an error when parsing the \'spmi index\' from the JIT output: {spmiPattern}')
+            #print(f'There was an error when parsing the \'spmi index\' from the JIT output: {spmi_index_pattern}')
             is_valid = False
     else:
         #print(f'\'spmi index\' does not exist.')
@@ -222,17 +216,15 @@ def parse_mldump_line(line):
 
     return Method(
             is_valid,
-            perfScore,
-            numCse,
-            numCand,
-            seq,
+            perf_score,
+            num_cse_usages,
+            num_cse_candidates,
+            cse_seq,
             spmi_index,
-            # paramPattern,
-            # likelihoodPattern,
-            # baseLikelihoodPattern,
-            # featurePattern,
-            codeSize,
-            []
+            code_size,
+            [],
+            0.0,
+            0
         )
 
 def parse_mldump_filter(predicate, lines):
@@ -276,7 +268,7 @@ def superpmi_jit(superpmi_process, spmi_index, train_kind, cse_replay_seqs):
             if train_kind != None:
                 if os.path.isfile(log_file):
                     meth.log = parse_log_file(spmi_index, log_file)
-                    if meth.numCse > 0 and not meth.log:
+                    if meth.num_cse_usages > 0 and not meth.log:
                         print(f'[mljit] WARNING: Expected log info of CSEs for spmi_index {spmi_index}')
                 else:
                     print(f'[mljit] WARNING: Training log file not found for spmi_index {spmi_index}')

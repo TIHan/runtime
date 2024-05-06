@@ -179,17 +179,13 @@ def create_agent():
         output_tensor_spec=action_spec,
         preprocessing_layers=preprocessing_layers,
         preprocessing_combiner=preprocessing_combiner,
-        
-        # Settings below match MLGO, most of the settings are actually the default values of ActorDistributionNetwork.
-       # fc_layer_params=(40, 40, 20),
-        fc_layer_params=(200, 100, 50)
-        )
+        fc_layer_params=(200, 100, 50))
 
     # critic_network = value_network.ValueNetwork(
     #   time_step_spec.observation,
     #   preprocessing_layers=preprocessing_layers,
-    #   preprocessing_combiner=preprocessing_combiner
-    #   )
+    #   preprocessing_combiner=preprocessing_combiner,
+    #   fc_layer_params=(100, 50, 25))
 
     critic_network = ConstantValueNetwork(time_step_spec.observation)
 
@@ -199,7 +195,6 @@ def create_agent():
         actor_net=actor_network,
         value_net=critic_network,
         num_epochs=1,
-        # Settings below match MLGO, most of the settings are actually the default values of PPOAgent.
         optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
         importance_ratio_clipping=0.2,
         lambda_value=0.0,
@@ -220,7 +215,7 @@ def create_agent():
         initial_adaptive_kl_beta=1.0,
         adaptive_kl_target=0.01,
         adaptive_kl_tolerance=0.3,
-        gradient_clipping=0.1,
+        gradient_clipping=None,
         value_clipping=None,
         check_numerics=False,
         compute_value_and_advantage_in_train=True,
@@ -492,7 +487,7 @@ def reset_metrics():
 # ---------------------------------------
 
 num_max_steps   = 1000000
-num_iterations  = 300
+num_iterations  = 1000
 
 def compute_dataset(sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size):
     return tf.data.Dataset.from_tensor_slices(sequence_examples).map(parse).unbatch().batch(train_sequence_length, drop_remainder=True).cache().shuffle(trajectory_shuffle_buffer_size).batch(batch_size, drop_remainder=True)
@@ -601,35 +596,32 @@ def collect_data(corpus_file_path, baseline, best_state, prev_state, train_kind=
 
         for item in data:
             if item.spmi_index == spmi_index:
-                reward = 0.0 #((item_best.perfScore - item.perfScore) / item_base.perfScore) * 10.0
+#                  all_ones = for_all(lambda x: x.cse_decision == 1, item.log)
+# -                    all_zeroes = for_all(lambda x: x.cse_decision == 0, item.log)
+# -                    if all_ones or all_zeroes:
+# -                        reward = -10.0
+# -                    else:
+# -                        reward = -1.0
+                reward = (((item_best.perf_score - item.perf_score) / item_base.perf_score) * 10.0) / float(len(item.log))
 
-                if item.perfScore < item_best.perfScore:
-                    if item_best.perfScore == item_base.perfScore:
-                        reward = 1.0
-                    else:
-                        reward = 10.0
-                elif item.perfScore == item_best.perfScore:
-                    if item_best.perfScore == item_base.perfScore:
-                        reward = 0.0
-                    else:
-                        reward = 10.0
-                elif item.perfScore < item_base.perfScore:
-                    reward = 1.0
-                elif item.perfScore == item_base.perfScore:
-                    reward = 0.0
-                else:
-                    all_ones = for_all(lambda x: x.cse_decision == 1, item.log)
-                    all_zeroes = for_all(lambda x: x.cse_decision == 0, item.log)
-                    if all_ones or all_zeroes:
-                        reward = -10.0
-                    else:
-                        reward = -1.0
-                
-                item.log[len(item.log) - 1].reward = reward
+                # total_reward = item_base.total_reward + reward
+                # total_count = item_base.total_count + 1
 
-                if item.perfScore < item_best.perfScore:
+                # reward = total_reward / total_count 
+
+                # item_base.total_reward = total_reward * 0.8
+                # item_base.total_count = total_count          
+
+                for i in range(len(item.log)):
+                    log_item = item.log[i]
+                    log_item_prev = item_prev.log[i]
+                    log_item_base = item_base.log[i]
+                    log_item_best = item_best.log[i]
+                    log_item.reward = reward
+
+                if item.perf_score < item_best.perf_score:
                     item_best = item
-                elif item.perfScore == item_best.perfScore and item.numCse < item_best.numCse:
+                elif item.perf_score == item_best.perf_score and item.num_cse_usages < item_best.num_cse_usages:
                     item_best = item
                     
                 acc = acc + [item.log]
@@ -661,7 +653,7 @@ if not mljit_superpmi.mldump_file_exists():
     print('[mljit] Finished producing mldump.txt')
 
 def filter_cse_methods(m):
-    return m.is_valid and m.numCse > 0 and m.perfScore > 0
+    return m.is_valid and m.num_cse_candidates > 0 and m.perf_score > 0
 
 baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:2000]
 
@@ -715,14 +707,14 @@ def compare_results(data_step_num, data_num_improvements, data_num_regressions, 
                 if print_verbose_results:
                     print("")
                     print(f'spmi index {curr.spmi_index}')
-                if curr.perfScore < base.perfScore:       
+                if curr.perf_score < base.perf_score:       
                     num_improvements = num_improvements + 1
-                    total_perf_score_improvement_diff = total_perf_score_improvement_diff + (base.perfScore - curr.perfScore)
-                elif curr.perfScore > base.perfScore:
+                    total_perf_score_improvement_diff = total_perf_score_improvement_diff + (base.perf_score - curr.perf_score)
+                elif curr.perf_score > base.perf_score:
                     num_regressions = num_regressions + 1
-                    total_perf_score_regression_diff = total_perf_score_regression_diff + (curr.perfScore - base.perfScore)
+                    total_perf_score_regression_diff = total_perf_score_regression_diff + (curr.perf_score - base.perf_score)
 
-                if curr.perfScore < best.perfScore:
+                if curr.perf_score < best.perf_score:
                     best_state[curr.spmi_index] = curr
 
                 if print_verbose_results:
@@ -731,7 +723,7 @@ def compare_results(data_step_num, data_num_improvements, data_num_regressions, 
                         curr_item = curr.log[k]
                         base_item = base.log[k]
                         print(f'best decision: {best_item.cse_decision}, base decision: {base_item.cse_decision}, curr decision: {curr_item.cse_decision}')
-                    print(f'best score: {best.perfScore}, base score: {base.perfScore}, curr score: {curr.perfScore}')
+                    print(f'best score: {best.perf_score}, base score: {base.perf_score}, curr score: {curr.perf_score}')
 
     print('----- Evaluation Policy Results ----')
     print(f'Step:              {step_num}')
@@ -768,7 +760,7 @@ data_num_regressions = new_data_num_regressions
 # baseline_groups = defaultdict(list)
 
 # for x in baseline:
-#     baseline_groups[x.numCand].append(x)
+#     baseline_groups[x.num_cse_candidates].append(x)
 
 best_ratio = -1000000.0
 if not eval_only:
