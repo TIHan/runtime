@@ -80,8 +80,6 @@ class Method:
     spmi_index: int
     code_size: float
     log: any
-    total_reward: float
-    total_count: int
 
 def create_superpmi_process(clrjit_dll_path, mch_path, mljit_enabled):
     l = threading.Event()
@@ -222,9 +220,7 @@ def parse_mldump_line(line):
             cse_seq,
             spmi_index,
             code_size,
-            [],
-            0.0,
-            0
+            []
         )
 
 def parse_mldump_filter(predicate, lines):

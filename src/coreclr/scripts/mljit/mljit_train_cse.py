@@ -195,7 +195,7 @@ def create_agent():
         actor_net=actor_network,
         value_net=critic_network,
         num_epochs=1,
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00001, epsilon=0.0003125), #(learning_rate=0.00003, epsilon=0.0003125)
         importance_ratio_clipping=0.2,
         lambda_value=0.0,
         discount_factor=0.0,
@@ -487,7 +487,7 @@ def reset_metrics():
 # ---------------------------------------
 
 num_max_steps   = 1000000
-num_iterations  = 1000
+num_iterations  = 300
 
 def compute_dataset(sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size):
     return tf.data.Dataset.from_tensor_slices(sequence_examples).map(parse).unbatch().batch(train_sequence_length, drop_remainder=True).cache().shuffle(trajectory_shuffle_buffer_size).batch(batch_size, drop_remainder=True)
@@ -596,21 +596,36 @@ def collect_data(corpus_file_path, baseline, best_state, prev_state, train_kind=
 
         for item in data:
             if item.spmi_index == spmi_index:
-#                  all_ones = for_all(lambda x: x.cse_decision == 1, item.log)
-# -                    all_zeroes = for_all(lambda x: x.cse_decision == 0, item.log)
-# -                    if all_ones or all_zeroes:
-# -                        reward = -10.0
-# -                    else:
-# -                        reward = -1.0
-                reward = (((item_best.perf_score - item.perf_score) / item_base.perf_score) * 10.0) / float(len(item.log))
 
-                # total_reward = item_base.total_reward + reward
-                # total_count = item_base.total_count + 1
+                reward = 0.0
+                if item.perf_score < item_base.perf_score:
+                    reward = 1.0
+                elif item.perf_score == item_base.perf_score:
+                    reward = 0.0
+                else:
+                    reward = -1.0
+                    
+                # reward = 0.0
+                # if item.perf_score <= item_best.perf_score:
+                #     if item.perf_score == item_base.perf_score:
+                #         reward = 0.0
+                #     elif item_best.perf_score == item_base.perf_score:
+                #         reward = 0.1
+                #     else:
+                #         reward = 1.0
+                # elif item.perf_score == item_base.perf_score:
+                #     reward = 0.0
+                # elif item.perf_score < item_base.perf_score:
+                #     reward = 0.1
+                # else:
+                #     all_ones = for_all(lambda x: x.cse_decision == 1, item.log)
+                #     all_zeroes = for_all(lambda x: x.cse_decision == 0, item.log)
+                #     if all_ones or all_zeroes:
+                #         reward = -1.0
+                #     else:
+                #         reward = -0.2
 
-                # reward = total_reward / total_count 
-
-                # item_base.total_reward = total_reward * 0.8
-                # item_base.total_count = total_count          
+                # reward = reward / float(len(item.log))#(((item_best.perf_score - item.perf_score) / item_base.perf_score) * 10.0) / float(len(item.log))   
 
                 for i in range(len(item.log)):
                     log_item = item.log[i]
@@ -653,7 +668,7 @@ if not mljit_superpmi.mldump_file_exists():
     print('[mljit] Finished producing mldump.txt')
 
 def filter_cse_methods(m):
-    return m.is_valid and m.num_cse_candidates > 0 and m.perf_score > 0
+    return m.is_valid and m.num_cse_candidates == 1 and m.perf_score > 0
 
 baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:2000]
 
@@ -770,7 +785,7 @@ if not eval_only:
 
         print('[mljit] Collecting data...')
         sequence_examples, monitor_dict = collect_data(corpus_file_path, baseline, best_state, prev_state)
-        dataset = create_dataset(sequence_examples, train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=1024)
+        dataset = create_dataset(sequence_examples, train_sequence_length=16, batch_size=64, trajectory_shuffle_buffer_size=1024)
         train(agent, dataset, monitor_dict)
 
         # datasets = []
