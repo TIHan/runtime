@@ -29,6 +29,9 @@ from tf_agents.utils import nest_utils
 from tf_agents.networks import actor_distribution_network, value_network
 from tf_agents.policies import PolicySaver, random_tf_policy, py_tf_policy
 from tf_agents.utils import common as common_utils
+from tf_agents.environments import tf_environment
+from tf_agents import specs
+from tf_agents.utils import common
 from absl import logging
 
 def for_all(predicate, xs):
@@ -98,60 +101,64 @@ class ConstantValueNetwork(network.Network):
     shape = nest_utils.get_outer_shape(inputs, self._input_tensor_spec)
     constant = tf.constant(self._constant_output_val, tf.float32)
     return tf.fill(shape, constant), network_state
+  
+float32_layer = tf.keras.layers.Lambda(lambda x: tf.expand_dims(x, -1))
+
+int64_layer = tf.keras.layers.Lambda(lambda x: tf.cast(tf.expand_dims(x, -1), tf.float32))
 
 observation_spec_and_preprocessing_layers = [
     (tf.TensorSpec(dtype=tf.int64, shape=(), name='cse_index'), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_cost_ex'), 
-        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)),
+        float32_layer),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_use_count_weighted_log'), 
-        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)),
+        float32_layer),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_def_count_weighted_log'), 
-        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)),
+        float32_layer),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_cost_sz'), 
-        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)),
+        float32_layer),
     (tf.TensorSpec(dtype=tf.int64, shape=(), name='cse_use_count'), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tf.TensorSpec(dtype=tf.int64, shape=(), name='cse_def_count'), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_live_across_call', minimum=0, maximum=1), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_int', minimum=0, maximum=1), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_constant_not_shared', minimum=0, maximum=1), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_shared_constant', minimum=0, maximum=1), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_cost_is_MIN_CSE_COST', minimum=0, maximum=1), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_constant_live_across_call', minimum=0, maximum=1), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_constant_min_cost', minimum=0, maximum=1), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_cost_is_MIN_CSE_COST_live_across_call', minimum=0, maximum=1), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_GTF_MAKE_CSE', minimum=0, maximum=1), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tf.TensorSpec(dtype=tf.int64, shape=(), name='cse_num_distinct_locals'), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tf.TensorSpec(dtype=tf.int64, shape=(), name='cse_num_local_occurrences'), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_has_call', minimum=0, maximum=1), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='log_cse_use_count_weighted_times_cost_ex'), 
-        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)),
+        float32_layer),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='log_cse_use_count_weighted_times_num_local_occurrences'), 
-        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)),
+        float32_layer),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_distance'), 
-        tf.keras.layers.Rescaling(scale=5, offset=0, dtype=tf.int64)), # (max postorder num - min postorder num) / num BBs
+        float32_layer), # (max postorder num - min postorder num) / num BBs
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_containable', minimum=0, maximum=1), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_cheap_containable', minimum=0, maximum=1), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_is_live_across_call_in_LSRA_ordering', minimum=0, maximum=1), 
-        tf.keras.layers.Identity()),
+        int64_layer),
     (tf.TensorSpec(dtype=tf.int64, shape=(), name='log_pressure_estimated_weight'), 
-        tf.keras.layers.Identity())
+        int64_layer)
 ]
 
 observation_spec_and_preprocessing_layers = list(map(lambda x: (x[0].name, x), observation_spec_and_preprocessing_layers))
@@ -171,7 +178,7 @@ time_step_spec = time_step.time_step_spec(observation_spec, reward_spec)
 action_spec = tensor_spec.BoundedTensorSpec(
      dtype=tf.int64, shape=(), name='cse_decision', minimum=0, maximum=1)
 
-preprocessing_combiner = tf.keras.layers.Add()
+preprocessing_combiner = tf.keras.layers.Concatenate()
 
 def create_agent():
     actor_network = actor_distribution_network.ActorDistributionNetwork(
@@ -179,13 +186,13 @@ def create_agent():
         output_tensor_spec=action_spec,
         preprocessing_layers=preprocessing_layers,
         preprocessing_combiner=preprocessing_combiner,
-        fc_layer_params=(200, 100, 50))
+       # activation_fn=tf.keras.activations.softmax,
+        fc_layer_params=(40, 40, 20))
 
     # critic_network = value_network.ValueNetwork(
     #   time_step_spec.observation,
     #   preprocessing_layers=preprocessing_layers,
-    #   preprocessing_combiner=preprocessing_combiner,
-    #   fc_layer_params=(100, 50, 25))
+    #   preprocessing_combiner=preprocessing_combiner)
 
     critic_network = ConstantValueNetwork(time_step_spec.observation)
 
@@ -194,32 +201,18 @@ def create_agent():
         action_spec=action_spec,
         actor_net=actor_network,
         value_net=critic_network,
-        num_epochs=1,
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00001, epsilon=0.0003125), #(learning_rate=0.00003, epsilon=0.0003125)
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00001, epsilon=0.0003125),
         importance_ratio_clipping=0.2,
         lambda_value=0.0,
         discount_factor=0.0,
-        entropy_regularization=0.003,
+        entropy_regularization=0.01,
         policy_l2_reg=0.000001,
+        num_epochs=1,
         value_function_l2_reg=0.0,
-        shared_vars_l2_reg=0.0,
         value_pred_loss_coef=0.0,
-        use_gae=False,
-        use_td_lambda_return=False,
-        normalize_rewards=False,
-        reward_norm_clipping=10.0,
         normalize_observations=False,
-        log_prob_clipping=0.0,
-        kl_cutoff_factor=2.0,
-        kl_cutoff_coef=1000.0,
-        initial_adaptive_kl_beta=1.0,
-        adaptive_kl_target=0.01,
-        adaptive_kl_tolerance=0.3,
-        gradient_clipping=None,
-        value_clipping=None,
-        check_numerics=False,
-        compute_value_and_advantage_in_train=True,
-        update_normalizers_in_train=True,
+        normalize_rewards=True,
+        reward_norm_clipping=1.0,
         debug_summaries=True,
         summarize_grads_and_vars=True)
 
@@ -487,7 +480,7 @@ def reset_metrics():
 # ---------------------------------------
 
 num_max_steps   = 1000000
-num_iterations  = 300
+num_iterations  = 1000
 
 def compute_dataset(sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size):
     return tf.data.Dataset.from_tensor_slices(sequence_examples).map(parse).unbatch().batch(train_sequence_length, drop_remainder=True).cache().shuffle(trajectory_shuffle_buffer_size).batch(batch_size, drop_remainder=True)
@@ -503,6 +496,8 @@ def train(agent, dataset, monitor_dict):
     reset_metrics()
     with tf.summary.record_if(lambda: tf.math.equal(
         global_step % 1000, 0)):
+
+        print('[mljit] Training...')
         dataset_iter = create_dataset_iter(dataset)
         count = 0
         for _ in range(num_iterations):
@@ -515,7 +510,7 @@ def train(agent, dataset, monitor_dict):
                 count = count + 1
             except StopIteration:
                 logging.warning(
-                    ('Skipped training because do not have enough data to fill '
+                    ('[mljit] ERROR: Skipped training because do not have enough data to fill '
                     'in a batch, consider increase data or reduce batch size.'))
                 break
 
@@ -584,7 +579,9 @@ def collect_data(corpus_file_path, baseline, best_state, prev_state, train_kind=
 
     indices = flatten(list(map(lambda x: [x.spmi_index], baseline)))
 
+    print('[mljit] Collecting data...')
     data = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=train_kind)
+    print('[mljit] Calculating rewards...')
 
     for i in range(len(baseline)):
         item_base = baseline[i]
@@ -597,41 +594,28 @@ def collect_data(corpus_file_path, baseline, best_state, prev_state, train_kind=
         for item in data:
             if item.spmi_index == spmi_index:
 
-                reward = 0.0
-                if item.perf_score < item_base.perf_score:
-                    reward = 1.0
-                elif item.perf_score == item_base.perf_score:
-                    reward = 0.0
-                else:
-                    reward = -1.0
-                    
-                # reward = 0.0
-                # if item.perf_score <= item_best.perf_score:
-                #     if item.perf_score == item_base.perf_score:
-                #         reward = 0.0
-                #     elif item_best.perf_score == item_base.perf_score:
-                #         reward = 0.1
-                #     else:
-                #         reward = 1.0
-                # elif item.perf_score == item_base.perf_score:
-                #     reward = 0.0
-                # elif item.perf_score < item_base.perf_score:
-                #     reward = 0.1
+                #reward = (item_best.perf_score - item.perf_score) / item_base.perf_score
+
+                # if item.perf_score < item_base.perf_score:
+                #     reward = 1.0
+                # elif item.perf_score > item_base.perf_score:
+                #     reward = -1.0
                 # else:
+                #     reward = 0.0
+
+                reward = (1.0 - (item.perf_score / item_base.perf_score))
+
+                # if item.perf_score > item_base.perf_score:
                 #     all_ones = for_all(lambda x: x.cse_decision == 1, item.log)
                 #     all_zeroes = for_all(lambda x: x.cse_decision == 0, item.log)
                 #     if all_ones or all_zeroes:
                 #         reward = -1.0
-                #     else:
-                #         reward = -0.2
-
-                # reward = reward / float(len(item.log))#(((item_best.perf_score - item.perf_score) / item_base.perf_score) * 10.0) / float(len(item.log))   
 
                 for i in range(len(item.log)):
                     log_item = item.log[i]
-                    log_item_prev = item_prev.log[i]
-                    log_item_base = item_base.log[i]
-                    log_item_best = item_best.log[i]
+                    log_item_prev = item_prev.log[i] # unused
+                    log_item_base = item_base.log[i] # unused
+                    log_item_best = item_best.log[i] # unused
                     log_item.reward = reward
 
                 if item.perf_score < item_best.perf_score:
@@ -668,9 +652,9 @@ if not mljit_superpmi.mldump_file_exists():
     print('[mljit] Finished producing mldump.txt')
 
 def filter_cse_methods(m):
-    return m.is_valid and m.num_cse_candidates == 1 and m.perf_score > 0
+    return m.is_valid and m.num_cse_candidates > 0 and m.perf_score > 0
 
-baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:2000]
+baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:5000]
 
 # ---------------------------------------
 
@@ -701,10 +685,11 @@ def plot_results(data_step_num, data_num_improvements, data_num_regressions):
     plt.pause(0.0001)
 
 # Compare Results
-print_verbose_results = False
+print_verbose_results = True
 def compare_results(data_step_num, data_num_improvements, data_num_regressions, step_num):
-    print('[mljit] Comparing results...')
+    print('[mljit] Collecting data for comparison...')
     policy_result = mljit_superpmi.collect_data(corpus_file_path, baseline_indices, train_kind=2) # policy
+    print('[mljit] Comparing results...')
 
     total_perf_score_improvement_diff = 0.0
     total_perf_score_regression_diff = 0.0
@@ -742,6 +727,7 @@ def compare_results(data_step_num, data_num_improvements, data_num_regressions, 
 
     print('----- Evaluation Policy Results ----')
     print(f'Step:              {step_num}')
+    print(f'Total Methods:     {len(baseline)}')
     print(f'Improvements:      {num_improvements}')
     print(f'Improvement Score: {total_perf_score_improvement_diff}')
     print(f'Regressions:       {num_regressions}')
@@ -767,63 +753,69 @@ data_step_num = []
 data_num_improvements = []
 data_num_regressions = []
 
-(new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, 0)
-data_step_num = new_data_step_num
-data_num_improvements = new_data_num_improvements
-data_num_regressions = new_data_num_regressions
+will_compare_results = True
 
-# baseline_groups = defaultdict(list)
+if will_compare_results:
+    (new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, 0)
+    data_step_num = new_data_step_num
+    data_num_improvements = new_data_num_improvements
+    data_num_regressions = new_data_num_regressions
 
-# for x in baseline:
-#     baseline_groups[x.num_cse_candidates].append(x)
+baseline_groups = defaultdict(list)
 
+for x in baseline:
+    baseline_groups[x.num_cse_candidates].append(x)
+
+episode_count = 0
 best_ratio = -1000000.0
 if not eval_only:
     while global_step.numpy() < num_max_steps:
         print(f'[mljit] Best ratio: {best_ratio}')
         print(f'[mljit] Current step: {global_step.numpy()}')
 
-        print('[mljit] Collecting data...')
         sequence_examples, monitor_dict = collect_data(corpus_file_path, baseline, best_state, prev_state)
-        dataset = create_dataset(sequence_examples, train_sequence_length=16, batch_size=64, trajectory_shuffle_buffer_size=1024)
+        dataset = create_dataset(sequence_examples, train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=1024)
         train(agent, dataset, monitor_dict)
 
         # datasets = []
         # for k, v in baseline_groups.items():
-        #     print('[mljit] Collecting data...')
         #     sequence_examples, monitor_dict = collect_data(corpus_file_path, v, best_state, prev_state)
 
         #     train_sequence_length = k
         #     batch_size = len(sequence_examples)
 
         #     if k == 1:
-        #         train_sequence_length = len(sequence_examples)
-        #         batch_size = 1
+        #         train_sequence_length = 2
+        #         batch_size = int(len(sequence_examples) / 2)
 
-        #     dataset = create_dataset(sequence_examples, train_sequence_length=train_sequence_length, batch_size=batch_size, trajectory_shuffle_buffer_size=1024)
+        #     dataset = create_dataset(sequence_examples, train_sequence_length=train_sequence_length, batch_size=batch_size, trajectory_shuffle_buffer_size=batch_size * 4)
         #     datasets = datasets + [dataset]
 
-        # final_dataset = functools.reduce(lambda x, y: x.concatenate(y), datasets)
-        # train(agent, final_dataset, monitor_dict)
+        # for dataset in datasets:
+        #     train(agent, dataset, monitor_dict)
 
         if not eval_only:
             save_policy(policy_saver, saved_policy_path)
             save_policy(collect_policy_saver, saved_collect_policy_path)
-        (new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, global_step.numpy())
-        num_improvements = new_data_num_improvements[len(new_data_num_improvements) - 1]
-        num_regressions = new_data_num_regressions[len(new_data_num_regressions) - 1]
 
-        if not eval_only:
-            ratio = float(num_improvements)
-            if num_regressions != 0:
-                ratio = float(num_improvements) / float(num_regressions)
-            if ratio > best_ratio:
-                best_ratio = ratio
-                best_policy_saver = create_policy_saver(agent)
-                save_policy(best_policy_saver, os.path.join(saved_policy_path, '../best_policy'))
-        data_step_num = new_data_step_num
-        data_num_improvements = new_data_num_improvements
-        data_num_regressions = new_data_num_regressions
+        if will_compare_results and episode_count % 10 == 0:
+            (new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, global_step.numpy())
+            num_improvements = new_data_num_improvements[len(new_data_num_improvements) - 1]
+            num_regressions = new_data_num_regressions[len(new_data_num_regressions) - 1]
+
+            if not eval_only:
+                ratio = float(num_improvements)
+                if num_regressions != 0:
+                    ratio = float(num_improvements) / float(num_regressions)
+                if ratio > best_ratio:
+                    best_ratio = ratio
+                    best_policy_saver = create_policy_saver(agent)
+                    save_policy(best_policy_saver, os.path.join(saved_policy_path, '../best_policy'))
+            data_step_num = new_data_step_num
+            data_num_improvements = new_data_num_improvements
+            data_num_regressions = new_data_num_regressions
+
+        episode_count = episode_count + 1
 
 # ---------------------------------------
 
