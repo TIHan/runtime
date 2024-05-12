@@ -43,7 +43,7 @@ class JitRunner:
         self.trajectory_shuffle_buffer_size = trajectory_shuffle_buffer_size
         self.num_max_steps = num_max_steps
 
-    def run(self, partitioned_methods):
+    def run(self, baseline_methods):
 
         self.jit_trainer.save_policy()
 
@@ -52,13 +52,10 @@ class JitRunner:
             print(f'[mljit] Current step: {self.jit_trainer.step.numpy()}')
             print(f'[mljit] Current episode: {episode_count}')
 
-          #  partition_index = episode_count % len(partitioned_methods)
-          #  print(f'[mljit] Current partition index: {partition_index}')
-
-            baseline_methods = partitioned_methods[0] # TODO: For now, it just gets the first item.
             print('[mljit] Collecting data...')
             methods = self.collect_data(baseline_methods)
             self.jit_trainer.train(self.jit_metrics, methods, step_size=self.step_size, train_sequence_length=self.train_sequence_length, batch_size=self.batch_size, trajectory_shuffle_buffer_size=self.trajectory_shuffle_buffer_size)
+            self.jit_trainer.save_policy()
 
             print('[mljit] Collecting data for comparisons...')
             methods = self.collect_data_no_training(baseline_methods)
@@ -79,4 +76,3 @@ class JitRunner:
                             regression_score = regression_score + (curr.perf_score - base.perf_score)
 
             self.jit_metrics.update_improvements_and_regressions(num_improvements, num_regressions, improvement_score, regression_score, self.jit_trainer.step)
-            self.jit_trainer.save_policy()

@@ -528,8 +528,8 @@ if build_warmstart:
 
     jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
     jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, saved_collect_policy_path, agent, create_trajectories=create_trajectories_for_bc, parse=parse_for_bc)
-    jit_runner = mljit_runner.JitRunner(jit_metrics, jit_trainer, collect_data=collect_data_for_bc, collect_data_no_training=collect_data_no_training_for_bc, step_size=1000, train_sequence_length=1, batch_size=64, trajectory_shuffle_buffer_size=1024, num_max_steps=50000)
-    jit_runner.run(partitioned_baseline)
+    jit_runner = mljit_runner.JitRunner(jit_metrics, jit_trainer, collect_data=collect_data_for_bc, collect_data_no_training=collect_data_no_training_for_bc, step_size=1000, train_sequence_length=1, batch_size=64, trajectory_shuffle_buffer_size=1024, num_max_steps=100000)
+    jit_runner.run(partitioned_baseline[0][:200]) # 200 methods only
 
     mljit_trainer.save_policy(jit_trainer.policy_saver, warmstart_policy_path)
 else:
@@ -543,7 +543,7 @@ else:
     jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
     jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, saved_collect_policy_path, agent, create_trajectories=create_trajectories_for_ppo, parse=parse_for_ppo)
     jit_runner = mljit_runner.JitRunner(jit_metrics, jit_trainer, collect_data=collect_data_for_ppo, collect_data_no_training=collect_data_no_training_for_ppo, step_size=1000, train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=1024, num_max_steps=1000000)
-    jit_runner.run(partitioned_baseline)
+    jit_runner.run(partitioned_baseline[0])
 
 # ---------------------------------------
 
