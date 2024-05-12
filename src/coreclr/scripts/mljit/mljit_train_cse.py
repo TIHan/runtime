@@ -500,7 +500,7 @@ def parse_for_bc(x):
     return parse(x, use_behavioral_cloning=True)
 
 def collect_data_for_bc(x):
-    return collect_data(corpus_file_path, x, best_state, use_behavioral_cloning=True)
+    return collect_data(corpus_file_path, x, best_state, train_kind=0, use_behavioral_cloning=True)
 
 def collect_data_no_training_for_bc(x):
     return collect_data(corpus_file_path, x, best_state, train_kind=2, use_behavioral_cloning=True)
@@ -528,8 +528,8 @@ if build_warmstart:
 
     jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
     jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, saved_collect_policy_path, agent, create_trajectories=create_trajectories_for_bc, parse=parse_for_bc)
-    jit_runner = mljit_runner.JitRunner(jit_metrics, jit_trainer, collect_data=collect_data_for_bc, collect_data_no_training=collect_data_no_training_for_bc, step_size=1000, train_sequence_length=1, batch_size=64, trajectory_shuffle_buffer_size=1024, num_max_steps=100000)
-    jit_runner.run(partitioned_baseline[0][:200]) # 200 methods only
+    jit_runner = mljit_runner.JitRunner(jit_metrics, jit_trainer, collect_data=collect_data_for_bc, collect_data_no_training=collect_data_no_training_for_bc, step_size=1000, train_sequence_length=1, batch_size=64, trajectory_shuffle_buffer_size=1024, num_max_steps=50000)
+    jit_runner.run(partitioned_baseline[0])
 
     mljit_trainer.save_policy(jit_trainer.policy_saver, warmstart_policy_path)
 else:
