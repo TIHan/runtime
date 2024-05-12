@@ -66,7 +66,7 @@ class JitTrainer:
         save_policy(self.policy_saver, self.saved_policy_path)
         save_policy(self.collect_policy_saver, self.saved_collect_policy_path)
 
-    def train(self, jit_metrics: mljit_metrics.JitTensorBoardMetrics, data, step_size=1000, train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=1024):
+    def train(self, jit_metrics: mljit_metrics.JitTensorBoardMetrics, data, step_size, train_sequence_length, batch_size, trajectory_shuffle_buffer_size):
         sequence_examples = self.create_trajectories(data)
         dataset = create_dataset(self.parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)
 

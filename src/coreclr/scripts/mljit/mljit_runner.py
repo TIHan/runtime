@@ -32,11 +32,16 @@ from tf_agents.utils import common
 from absl import logging
 
 class JitRunner:
-    def __init__(self, jit_metrics: mljit_metrics.JitTensorBoardMetrics, jit_trainer: mljit_trainer.JitTrainer, collect_data, num_max_steps=1000000):
+    def __init__(self, jit_metrics: mljit_metrics.JitTensorBoardMetrics, jit_trainer: mljit_trainer.JitTrainer, collect_data, collect_data_no_training, step_size, train_sequence_length, batch_size, trajectory_shuffle_buffer_size, num_max_steps):
         self.jit_metrics = jit_metrics
-        self.jit_trainer = jit_trainer
-        self.num_max_steps = num_max_steps
+        self.jit_trainer = jit_trainer   
         self.collect_data = collect_data
+        self.collect_data_no_training = collect_data_no_training
+        self.step_size = step_size
+        self.train_sequence_length = train_sequence_length
+        self.batch_size = batch_size
+        self.trajectory_shuffle_buffer_size = trajectory_shuffle_buffer_size
+        self.num_max_steps = num_max_steps
 
     def run(self, partitioned_methods):
 
@@ -50,7 +55,28 @@ class JitRunner:
           #  partition_index = episode_count % len(partitioned_methods)
           #  print(f'[mljit] Current partition index: {partition_index}')
 
-            methods = partitioned_methods[0] # TODO: For now, it just gets the first item.
-            data = self.collect_data(methods)
-            self.jit_trainer.train(self.jit_metrics, data)
+            baseline_methods = partitioned_methods[0] # TODO: For now, it just gets the first item.
+            print('[mljit] Collecting data...')
+            methods = self.collect_data(baseline_methods)
+            self.jit_trainer.train(self.jit_metrics, methods, step_size=self.step_size, train_sequence_length=self.train_sequence_length, batch_size=self.batch_size, trajectory_shuffle_buffer_size=self.trajectory_shuffle_buffer_size)
+
+            print('[mljit] Collecting data for comparisons...')
+            methods = self.collect_data_no_training(baseline_methods)
+
+            num_improvements = 0
+            num_regressions = 0
+            improvement_score = 0
+            regression_score = 0
+
+            for base in baseline_methods:
+                for curr in methods:
+                    if base.spmi_index == curr.spmi_index:
+                        if curr.perf_score < base.perf_score:
+                            num_improvements = num_improvements + 1
+                            improvement_score = improvement_score + (base.perf_score - curr.perf_score)
+                        elif curr.perf_score > base.perf_score:
+                            num_regressions = num_regressions + 1
+                            regression_score = regression_score + (curr.perf_score - base.perf_score)
+
+            self.jit_metrics.update_improvements_and_regressions(num_improvements, num_regressions, improvement_score, regression_score, self.jit_trainer.step)
             self.jit_trainer.save_policy()

@@ -20,7 +20,6 @@ This assumes you know how to build the runtime and JIT.
     - Install Python 3.11 or later.
     - From command-line: 
         - Run `pip3 install tf_agents`. This should install all the necessary dependencies for using the `tf_agents` library, including TensorFlow.
-        - Run `pip3 install matplotlib`.
         - Run `pip3 install tensorboard`.
 
 From these steps, you should be able to build the JIT and run the python script `src/coreclr/scripts/mljit_train_cse.py` without dependency issues. For instructions on how to run `mljit_train_cse.py`, see below.
@@ -60,6 +59,8 @@ From these steps, you should be able to build the JIT and run the python script 
         - `1` - Executes the `collect_policy` to make CSE decisions. It's stochastic when it makes a decision which is why this mode is used for training, it's trying to be used for random exploration. Records the inputs/outputs when the policy gets executed. Requires `DOTNET_MLJitSavedCollectPolicyPath` to be set.
         - `2` - Executes the `policy` to make CSE decisions. This is meant to be the final policy produced after training and used for evaluation. Records the inputs/outputs when the policy gets executed. Requires `DOTNET_MLJitSavedPolicyPath` to be set.
     - Example: `DOTNET_MLJitTrain=1` for random exploration.
+- `DOTNET_MLJitUseBC`
+    - TODO
 
 ## `mljit_train_cse.py`
 
@@ -76,8 +77,7 @@ DOTNET_MLJitLogPath=C:\work\mljit
 - The script will do the following:
     - On first run, will produce a `mldump.txt` by replaying the `.mch` file from `DOTNET_MLJitCorpusFile`.
     - From the `mldump.txt` file, will gather a list of all methods that contain CSEs.
-        - The first 50 methods from this list will be used for training.
-    - Training will commence, it shouldn't take very long given we are only using 50 methods.
+    - Training will commence.
     - Once training is complete, it will then compare results from the baseline to see how many improvements and regressions were made from the final policy.
 
 ## TensorBoard
@@ -92,15 +92,6 @@ Instructions:
 - Set environment variable `DOTNET_MLJitLogPath` to the same path as when you started training.
 - Run `tensorboard --logdir %DOTNET_MLJitLogPath%`.
 - When TensorBoard launches, it will print a URL, example: `http://localhost:6006/`. Go to that URL and you will see all the information about your training session.
-
-## Oustanding Questions
-
-Training doesn't work as intended. We could try to figure it out if we can answer some of the following questions:
-1. `collect_policy` is used for training, but what does that mean *exactly*?
-2. Why do the policies have a `reward` input? What does that mean and how does it affect training?
-3. Where should the `reward` be calculated?
-4. How do sequences of training logs affect training?
-    - There is nuance to this that I am just not certain of. We store a sequence of training logs into a `tf.data.Dataset` then do some batching/unbatching and shuffling of data on it. This dataset then gets iterated repeatedly for 300 iterations, where each iteration experience is used to train the model. This is what MLGO does.
 
 ## Useful Links
 

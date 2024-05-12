@@ -3,13 +3,8 @@ import re
 import collections
 import numpy as np
 import statistics
-import tensorflow as tf
 import json
 import itertools
-import mljit_superpmi
-import mljit_metrics
-import mljit_trainer
-import mljit_runner
 import functools
 
 # From https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters
@@ -50,3 +45,6 @@ def map_dict(f, my_dictionary):
 
 def map_dict_value(f, my_dictionary):
    return {k: f(v) for k, v in my_dictionary.items()}
+
+def flatten(xss):
+    return [x for xs in xss for x in xs]

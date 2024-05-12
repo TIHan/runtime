@@ -41,8 +41,8 @@ const size_t Compiler::s_optCSEhashGrowthFactor = 2;
 const size_t Compiler::s_optCSEhashBucketSize   = 4;
 
 #if DEBUG
-static MLJIT_CsePolicy*        currentPolicy        = nullptr;
-static MLJIT_CseCollectPolicy* currentCollectPolicy = nullptr;
+static MLJIT_CsePolicyBase* currentPolicy        = nullptr;
+static MLJIT_CsePolicyBase* currentCollectPolicy = nullptr;
 
 void mljit_policy_set_cse_inputs(MLJIT_CsePolicyBase* policy, Compiler* compiler, int minCseCost, CSEdsc* cse)
 {
@@ -5583,9 +5583,9 @@ void Compiler::optOptimizeCSEs()
 {
 #if DEBUG
     // Create it once.
-    static MLJIT_CsePolicy* policy = mljit_try_create_cse_policy();
+    static MLJIT_CsePolicyBase* policy = mljit_try_create_cse_policy();
     // Create it once.
-    static MLJIT_CseCollectPolicy* collectPolicy = mljit_try_create_cse_collect_policy();
+    static MLJIT_CsePolicyBase* collectPolicy = mljit_try_create_cse_collect_policy();
 
     // FIXME: Creating/destroying policies isn't thread-safe, but training/executing policies is normally done in SuperPMI
     // streaming mode which is only single-threaded; therefore, this is "ok" for now.

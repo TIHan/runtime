@@ -11,6 +11,7 @@ import mljit_metrics
 import mljit_trainer
 import mljit_runner
 import mljit_utils
+import mljit_tf
 import functools
 
 from dataclasses import dataclass
@@ -34,6 +35,7 @@ from tf_agents.environments import tf_environment
 from tf_agents import specs
 from tf_agents.utils import common
 from absl import logging
+from tf_agents.policies import policy_loader
 
 # Use 'saved_model_cli show --dir saved_policy\ --tag_set serve --signature_def action' from the command line to see the inputs/outputs of the policy.
 
@@ -42,41 +44,9 @@ saved_policy_path = os.environ['DOTNET_MLJitSavedPolicyPath']
 saved_collect_policy_path = os.environ['DOTNET_MLJitSavedCollectPolicyPath']
 log_path = os.environ['DOTNET_MLJitLogPath']
 
-def flatten(xss):
-    return [x for xs in xss for x in xs]
-
-# This was from MLGO, but not really sure what it is.
-class ConstantValueNetwork(network.Network):
-  """Constant value network that predicts zero per batch item."""
-
-  def __init__(self, input_tensor_spec, constant_output_val=0, name=None):
-    """Creates an instance of `ConstantValueNetwork`.
-
-    Network supports calls with shape outer_rank + observation_spec.shape. Note
-    outer_rank must be at least 1.
-
-    Args:
-      input_tensor_spec: A `tensor_spec.TensorSpec` or a tuple of specs
-        representing the input observations.
-      constant_output_val: A constant scalar value the network will output.
-      name: A string representing name of the network.
-
-    Raises:
-      ValueError: If input_tensor_spec is not an instance of network.InputSpec.
-    """
-    super().__init__(
-        input_tensor_spec=input_tensor_spec, state_spec=(), name=name)
-
-    self._constant_output_val = constant_output_val
-
-  def call(self, inputs, step_type=None, network_state=(), training=False):
-    _ = (step_type, training)
-    shape = nest_utils.get_outer_shape(inputs, self._input_tensor_spec)
-    constant = tf.constant(self._constant_output_val, tf.float32)
-    return tf.fill(shape, constant), network_state
+warmstart_policy_path = os.path.join(log_path, 'warmstart_policy/')
   
 float32_layer = tf.keras.layers.Lambda(lambda x: tf.expand_dims(x, -1))
-
 int64_layer = tf.keras.layers.Lambda(lambda x: tf.cast(tf.expand_dims(x, -1), tf.float32))
 
 observation_spec_and_preprocessing_layers = [
@@ -142,10 +112,31 @@ preprocessing_layers = mljit_utils.map_dict_value(lambda x: x[1], observation_sp
 
 reward_spec = tf.TensorSpec(dtype=tf.float32, shape=(), name='reward')
 time_step_spec = time_step.time_step_spec(observation_spec, reward_spec)
-action_spec = tensor_spec.BoundedTensorSpec(
-     dtype=tf.int64, shape=(), name='cse_decision', minimum=0, maximum=1)
+action_spec = tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_decision', minimum=0, maximum=1)
 
 preprocessing_combiner = tf.keras.layers.Concatenate()
+
+def create_bc_agent():
+    network = q_network.QNetwork(
+        input_tensor_spec=time_step_spec.observation,
+        action_spec=action_spec,
+        preprocessing_layers=preprocessing_layers,
+        preprocessing_combiner=preprocessing_combiner,
+        fc_layer_params=(40, 40, 20),
+        dropout_layer_params=(0.2, 0.2, 0.2))
+
+    agent = behavioral_cloning_agent.BehavioralCloningAgent(
+        time_step_spec=time_step_spec,
+        action_spec=action_spec,
+        cloning_network=network,
+        optimizer=tf.keras.optimizers.Adam(),
+        num_outer_dims=2,
+        debug_summaries=True,
+        summarize_grads_and_vars=True)
+
+    agent.initialize()
+    agent.train = common_utils.function(agent.train) # Apparently, it makes 'train' faster? Who knows why...
+    return agent
 
 def create_ppo_agent():
     actor_network = actor_distribution_network.ActorDistributionNetwork(
@@ -160,7 +151,7 @@ def create_ppo_agent():
     #   preprocessing_layers=preprocessing_layers,
     #   preprocessing_combiner=preprocessing_combiner)
 
-    critic_network = ConstantValueNetwork(time_step_spec.observation)
+    critic_network = mljit_tf.ConstantValueNetwork(time_step_spec.observation)
 
     agent = ppo_agent.PPOAgent(
         time_step_spec=time_step_spec,
@@ -186,7 +177,7 @@ def create_ppo_agent():
 
 # ---------------------------------------
 
-def create_sequence_example(log):
+def create_sequence_example(log, use_behavioral_cloning):
 
     def log_to_feature_int64(x, f):
         return tf.train.Feature(int64_list=tf.train.Int64List(value=[np.int64(f(x))]))
@@ -262,50 +253,86 @@ def create_sequence_example(log):
 
     many_reward = tf.train.FeatureList(feature=logs_to_features_float(log, lambda x: x.reward))
 
-    many_CategoricalProjectionNetwork_logits = tf.train.FeatureList(feature=logs_to_features_float_2(log, lambda x: x.CategoricalProjectionNetwork_logits))
+    if use_behavioral_cloning:
+        feature_dict = {
+            'cse_index': many_cse_index,
+            'cse_cost_ex': many_cse_cost_ex,
+            'cse_use_count_weighted_log': many_cse_use_count_weighted_log,
+            'cse_def_count_weighted_log': many_cse_def_count_weighted_log,
+            'cse_cost_sz': many_cse_cost_sz,
+            'cse_use_count': many_cse_use_count,
+            'cse_def_count': many_cse_def_count,
+            'cse_is_live_across_call': many_cse_is_live_across_call,
+            'cse_is_int': many_cse_is_int,
+            'cse_is_constant_not_shared': many_cse_is_constant_not_shared,
+            'cse_is_shared_constant': many_cse_is_shared_constant,
+            'cse_cost_is_MIN_CSE_COST': many_cse_cost_is_MIN_CSE_COST,
+            'cse_is_constant_live_across_call': many_cse_is_constant_live_across_call,
+            'cse_is_constant_min_cost': many_cse_is_constant_min_cost,
+            'cse_cost_is_MIN_CSE_COST_live_across_call': many_cse_cost_is_MIN_CSE_COST_live_across_call,
+            'cse_is_GTF_MAKE_CSE': many_cse_is_GTF_MAKE_CSE,
+            'cse_num_distinct_locals': many_cse_num_distinct_locals,
+            'cse_num_local_occurrences': many_cse_num_local_occurrences,
+            'cse_has_call': many_cse_has_call,
+            'log_cse_use_count_weighted_times_cost_ex': many_log_cse_use_count_weighted_times_cost_ex,
+            'log_cse_use_count_weighted_times_num_local_occurrences': many_log_cse_use_count_weighted_times_num_local_occurrences,
+            'cse_distance': many_cse_distance,
+            'cse_is_containable': many_cse_is_containable,
+            'cse_is_cheap_containable': many_cse_is_cheap_containable,
+            'cse_is_live_across_call_in_LSRA_ordering': many_cse_is_live_across_call_in_LSRA_ordering,
+            'log_pressure_estimated_weight': many_log_pressure_estimated_weight,
+            'cse_decision': many_cse_decision,
+            'reward': many_reward
+        }
 
-    feature_dict = {
-        'cse_index': many_cse_index,
-        'cse_cost_ex': many_cse_cost_ex,
-        'cse_use_count_weighted_log': many_cse_use_count_weighted_log,
-        'cse_def_count_weighted_log': many_cse_def_count_weighted_log,
-        'cse_cost_sz': many_cse_cost_sz,
-        'cse_use_count': many_cse_use_count,
-        'cse_def_count': many_cse_def_count,
-        'cse_is_live_across_call': many_cse_is_live_across_call,
-        'cse_is_int': many_cse_is_int,
-        'cse_is_constant_not_shared': many_cse_is_constant_not_shared,
-        'cse_is_shared_constant': many_cse_is_shared_constant,
-        'cse_cost_is_MIN_CSE_COST': many_cse_cost_is_MIN_CSE_COST,
-        'cse_is_constant_live_across_call': many_cse_is_constant_live_across_call,
-        'cse_is_constant_min_cost': many_cse_is_constant_min_cost,
-        'cse_cost_is_MIN_CSE_COST_live_across_call': many_cse_cost_is_MIN_CSE_COST_live_across_call,
-        'cse_is_GTF_MAKE_CSE': many_cse_is_GTF_MAKE_CSE,
-        'cse_num_distinct_locals': many_cse_num_distinct_locals,
-        'cse_num_local_occurrences': many_cse_num_local_occurrences,
-        'cse_has_call': many_cse_has_call,
-        'log_cse_use_count_weighted_times_cost_ex': many_log_cse_use_count_weighted_times_cost_ex,
-        'log_cse_use_count_weighted_times_num_local_occurrences': many_log_cse_use_count_weighted_times_num_local_occurrences,
-        'cse_distance': many_cse_distance,
-        'cse_is_containable': many_cse_is_containable,
-        'cse_is_cheap_containable': many_cse_is_cheap_containable,
-        'cse_is_live_across_call_in_LSRA_ordering': many_cse_is_live_across_call_in_LSRA_ordering,
-        'log_pressure_estimated_weight': many_log_pressure_estimated_weight,
-        'cse_decision': many_cse_decision,
-        'reward': many_reward,
-        'CategoricalProjectionNetwork_logits': many_CategoricalProjectionNetwork_logits
-    }
+    else:
+        many_CategoricalProjectionNetwork_logits = tf.train.FeatureList(feature=logs_to_features_float_2(log, lambda x: x.CategoricalProjectionNetwork_logits))
+
+        feature_dict = {
+            'cse_index': many_cse_index,
+            'cse_cost_ex': many_cse_cost_ex,
+            'cse_use_count_weighted_log': many_cse_use_count_weighted_log,
+            'cse_def_count_weighted_log': many_cse_def_count_weighted_log,
+            'cse_cost_sz': many_cse_cost_sz,
+            'cse_use_count': many_cse_use_count,
+            'cse_def_count': many_cse_def_count,
+            'cse_is_live_across_call': many_cse_is_live_across_call,
+            'cse_is_int': many_cse_is_int,
+            'cse_is_constant_not_shared': many_cse_is_constant_not_shared,
+            'cse_is_shared_constant': many_cse_is_shared_constant,
+            'cse_cost_is_MIN_CSE_COST': many_cse_cost_is_MIN_CSE_COST,
+            'cse_is_constant_live_across_call': many_cse_is_constant_live_across_call,
+            'cse_is_constant_min_cost': many_cse_is_constant_min_cost,
+            'cse_cost_is_MIN_CSE_COST_live_across_call': many_cse_cost_is_MIN_CSE_COST_live_across_call,
+            'cse_is_GTF_MAKE_CSE': many_cse_is_GTF_MAKE_CSE,
+            'cse_num_distinct_locals': many_cse_num_distinct_locals,
+            'cse_num_local_occurrences': many_cse_num_local_occurrences,
+            'cse_has_call': many_cse_has_call,
+            'log_cse_use_count_weighted_times_cost_ex': many_log_cse_use_count_weighted_times_cost_ex,
+            'log_cse_use_count_weighted_times_num_local_occurrences': many_log_cse_use_count_weighted_times_num_local_occurrences,
+            'cse_distance': many_cse_distance,
+            'cse_is_containable': many_cse_is_containable,
+            'cse_is_cheap_containable': many_cse_is_cheap_containable,
+            'cse_is_live_across_call_in_LSRA_ordering': many_cse_is_live_across_call_in_LSRA_ordering,
+            'log_pressure_estimated_weight': many_log_pressure_estimated_weight,
+            'cse_decision': many_cse_decision,
+            'reward': many_reward,
+            'CategoricalProjectionNetwork_logits': many_CategoricalProjectionNetwork_logits
+        }
 
     feature_lists = tf.train.FeatureLists(feature_list=feature_dict)
 
     return tf.train.SequenceExample(context={},feature_lists=feature_lists)
 
-def create_serialized_sequence_example(data):
-   return create_sequence_example(data).SerializeToString()
+def create_serialized_sequence_example(data, use_behavioral_cloning):
+   return create_sequence_example(data, use_behavioral_cloning).SerializeToString()
 
 # ---------------------------------------
 
-def get_policy_info_parsing_dict() -> Dict[str, tf.io.FixedLenSequenceFeature]:
+def get_policy_info_parsing_dict(use_behavioral_cloning) -> Dict[str, tf.io.FixedLenSequenceFeature]:
+    if use_behavioral_cloning:
+        return {}
+    
     if tensor_spec.is_discrete(action_spec):
       return {
           'CategoricalProjectionNetwork_logits':
@@ -322,7 +349,10 @@ def get_policy_info_parsing_dict() -> Dict[str, tf.io.FixedLenSequenceFeature]:
               tf.io.FixedLenSequenceFeature(shape=(), dtype=tf.float32)
       }
 
-def process_parsed_sequence_and_get_policy_info(parsed_sequence: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+def process_parsed_sequence_and_get_policy_info(parsed_sequence: Dict[str, Any], use_behavioral_cloning) -> Dict[str, Dict[str, Any]]:
+    if use_behavioral_cloning:
+        return {}
+    
     if tensor_spec.is_discrete(action_spec):
         policy_info = {
             'dist_params': {
@@ -342,7 +372,7 @@ def process_parsed_sequence_and_get_policy_info(parsed_sequence: Dict[str, Any])
     return policy_info
 
 # From MLGO.
-def parse(serialized_proto):
+def parse(serialized_proto, use_behavioral_cloning):
     # We copy through all context features at each frame, so even though we know
     # they don't change from frame to frame, they are still sequence features
     # and stored in the feature list.
@@ -361,7 +391,7 @@ def parse(serialized_proto):
         time_step_spec.reward.name] = tf.io.FixedLenSequenceFeature(
             shape=time_step_spec.reward.shape,
             dtype=time_step_spec.reward.dtype)
-    sequence_features.update(get_policy_info_parsing_dict())
+    sequence_features.update(get_policy_info_parsing_dict(use_behavioral_cloning))
 
     # pylint: enable=g-complex-comprehension
     with tf.name_scope('parse'):
@@ -372,11 +402,9 @@ def parse(serialized_proto):
 
       # TODO(yundi): make the transformed reward configurable.
       action = parsed_sequence[action_spec.name]
-      reward = tf.cast(parsed_sequence[time_step_spec.reward.name],
-                       tf.float32)
+      reward = tf.cast(parsed_sequence[time_step_spec.reward.name], tf.float32)
 
-      policy_info = process_parsed_sequence_and_get_policy_info(
-          parsed_sequence)
+      policy_info = process_parsed_sequence_and_get_policy_info(parsed_sequence, use_behavioral_cloning)
       
       del parsed_sequence[time_step_spec.reward.name]
       del parsed_sequence[action_spec.name]
@@ -390,13 +418,10 @@ def parse(serialized_proto):
 
 # ---------------------------------------
 
-def collect_data(corpus_file_path, baseline, best_state, train_kind=1):
-    indices = flatten(list(map(lambda x: [x.spmi_index], baseline)))
+def collect_data(corpus_file_path, baseline, best_state, train_kind=1, use_behavioral_cloning=False):
+    indices = mljit_utils.flatten(list(map(lambda x: [x.spmi_index], baseline)))
 
-    print('[mljit] Collecting data...')
-    data = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=train_kind)
-    print('[mljit] Calculating rewards...')
-
+    data = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=train_kind, use_behavioral_cloning=use_behavioral_cloning)
     for item_base in baseline:
         spmi_index = item_base.spmi_index
         item_best = best_state[spmi_index]
@@ -435,13 +460,13 @@ def collect_data(corpus_file_path, baseline, best_state, train_kind=1):
 
     return data
 
-def create_trajectories(data: Sequence[Any]):    
+def create_trajectories(data: Sequence[Any], use_behavioral_cloning):    
     acc = []
     for x in data:
         acc = acc + [x.log]
 
     print(f'[mljit] Creating trajectories: {len(acc)}...')
-    return list(map(create_serialized_sequence_example, acc))
+    return list(map(lambda x: create_serialized_sequence_example(x, use_behavioral_cloning), acc))
 
 # ---------------------------------------
 
@@ -460,22 +485,65 @@ partitioned_baseline = mljit_utils.partition(baseline, 2000)
 eval_baseline = partitioned_baseline[0]
 eval_indices = list(map(lambda x: x.spmi_index, eval_baseline))
 
-# ---------------------------------------
-
-# Training
-
-agent = create_ppo_agent()
-
-jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
-jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, saved_collect_policy_path, agent, create_trajectories, parse)
-
 best_state = dict()
 for x in baseline:
     best_state[x.spmi_index] = x
 
-jit_runner = mljit_runner.JitRunner(jit_metrics, jit_trainer, collect_data=(lambda methods: collect_data(corpus_file_path, methods, best_state)))
+# ---------------------------------------
 
-jit_runner.run(partitioned_baseline)
+# Training
+
+def create_trajectories_for_bc(x):
+    return create_trajectories(x, use_behavioral_cloning=True)
+
+def parse_for_bc(x):
+    return parse(x, use_behavioral_cloning=True)
+
+def collect_data_for_bc(x):
+    return collect_data(corpus_file_path, x, best_state, use_behavioral_cloning=True)
+
+def collect_data_no_training_for_bc(x):
+    return collect_data(corpus_file_path, x, best_state, train_kind=2, use_behavioral_cloning=True)
+
+def create_trajectories_for_ppo(x):
+    return create_trajectories(x, use_behavioral_cloning=False)
+
+def parse_for_ppo(x):
+    return parse(x, use_behavioral_cloning=False)
+
+def collect_data_for_ppo(x):
+    return collect_data(corpus_file_path, x, best_state, use_behavioral_cloning=False)
+
+def collect_data_no_training_for_ppo(x):
+    return collect_data(corpus_file_path, x, best_state, train_kind=2, use_behavioral_cloning=False)
+
+# TODO: Make this part of the command line args.
+build_warmstart = False
+use_warmstart = False
+
+if build_warmstart:
+    # BC Training
+
+    agent = create_bc_agent()
+
+    jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
+    jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, saved_collect_policy_path, agent, create_trajectories=create_trajectories_for_bc, parse=parse_for_bc)
+    jit_runner = mljit_runner.JitRunner(jit_metrics, jit_trainer, collect_data=collect_data_for_bc, collect_data_no_training=collect_data_no_training_for_bc, step_size=1000, train_sequence_length=1, batch_size=64, trajectory_shuffle_buffer_size=1024, num_max_steps=50000)
+    jit_runner.run(partitioned_baseline)
+
+    mljit_trainer.save_policy(jit_trainer.policy_saver, warmstart_policy_path)
+else:
+    # PPO Training
+
+    agent = create_ppo_agent()
+
+    if use_warmstart:
+        agent.policy.update(policy_loader.load(warmstart_policy_path))
+
+    jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
+    jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, saved_collect_policy_path, agent, create_trajectories=create_trajectories_for_ppo, parse=parse_for_ppo)
+    jit_runner = mljit_runner.JitRunner(jit_metrics, jit_trainer, collect_data=collect_data_for_ppo, collect_data_no_training=collect_data_no_training_for_ppo, step_size=1000, train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=1024, num_max_steps=1000000)
+    jit_runner.run(partitioned_baseline)
 
 # ---------------------------------------
 

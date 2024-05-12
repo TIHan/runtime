@@ -287,17 +287,8 @@ void mljit_add_cse_policy_inputs(
                                                                                     "action_discount", TF_FLOAT);
 }
 
-MLJIT_CsePolicy* mljit_try_create_cse_policy()
+MLJIT_CsePolicyBase* mljit_create_cse_policy(const char* savedPolicyDir)
 {
-    const char* mljitEnabled = getenv("DOTNET_MLJitEnabled");
-    if (!mljitEnabled || (strcmp(mljitEnabled, "1") != 0))
-        return nullptr;
-
-    const char* savedPolicyDir = getenv("DOTNET_MLJitSavedPolicyPath");
-
-    if (!savedPolicyDir)
-        return nullptr;
-
     TF_Graph*          graph       = TF_NewGraph();
     TF_Status*         status      = TF_NewStatus();
     TF_SessionOptions* sessionOpts = TF_NewSessionOptions();
@@ -359,17 +350,8 @@ MLJIT_CsePolicy* mljit_try_create_cse_policy()
     return policy;
 }
 
-MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy()
+MLJIT_CsePolicyBase* mljit_create_cse_collect_policy(const char* savedPolicyDir)
 {
-    const char* mljitEnabled = getenv("DOTNET_MLJitEnabled");
-    if (!mljitEnabled || (strcmp(mljitEnabled, "1") != 0))
-        return nullptr;
-
-    const char* savedPolicyDir = getenv("DOTNET_MLJitSavedCollectPolicyPath");
-
-    if (!savedPolicyDir)
-        return nullptr;
-
     TF_Graph*          graph       = TF_NewGraph();
     TF_Status*         status      = TF_NewStatus();
     TF_SessionOptions* sessionOpts = TF_NewSessionOptions();
@@ -414,8 +396,8 @@ MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy()
     Add_CategoricalProjectionNetwork_logits_Output(numOutputs, output, outputValues, outputCount, graph);
 
     // This is the "cse_decision".
-    AddScalarOutput<int64_t>(numOutputs, output, outputValues, outputCount, graph,
-                                                                                    "StatefulPartitionedCall", TF_INT64, 1);
+    AddScalarOutput<int64_t>(numOutputs, output, outputValues, outputCount, graph, "StatefulPartitionedCall", TF_INT64,
+                             1);
 
     assert(numOutputs == outputCount);
 
@@ -432,6 +414,46 @@ MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy()
     policy->output       = output;
     policy->outputValues = outputValues;
     return policy;
+}
+
+bool mljit_is_using_behavioral_cloning()
+{
+    const char* result = getenv("DOTNET_MLJitUseBC");
+    if (!result || (strcmp(result, "1") != 0))
+        return false;
+    return true;
+}
+
+MLJIT_CsePolicyBase* mljit_try_create_cse_policy()
+{
+    const char* mljitEnabled = getenv("DOTNET_MLJitEnabled");
+    if (!mljitEnabled || (strcmp(mljitEnabled, "1") != 0))
+        return nullptr;
+
+    const char* savedPolicyDir = getenv("DOTNET_MLJitSavedPolicyPath");
+
+    if (!savedPolicyDir)
+        return nullptr;
+
+    return mljit_create_cse_policy(savedPolicyDir);
+}
+
+MLJIT_CsePolicyBase* mljit_try_create_cse_collect_policy()
+{
+    const char* mljitEnabled = getenv("DOTNET_MLJitEnabled");
+    if (!mljitEnabled || (strcmp(mljitEnabled, "1") != 0))
+        return nullptr;
+
+    const char* savedPolicyDir = getenv("DOTNET_MLJitSavedCollectPolicyPath");
+
+    if (!savedPolicyDir)
+        return nullptr;
+
+    if (mljit_is_using_behavioral_cloning())
+    {
+        return mljit_create_cse_policy(savedPolicyDir);
+    }
+    return mljit_create_cse_collect_policy(savedPolicyDir);
 }
 
 void mljit_destroy_policy(MLJIT_Policy* policy)

@@ -302,8 +302,8 @@ public:
     }
 };
 
-MLJIT_CsePolicy* mljit_try_create_cse_policy();
-MLJIT_CseCollectPolicy* mljit_try_create_cse_collect_policy();
+MLJIT_CsePolicyBase* mljit_try_create_cse_policy();
+MLJIT_CsePolicyBase* mljit_try_create_cse_collect_policy();
 void mljit_destroy_policy(MLJIT_Policy* mljitSession);
 
 #endif // DEBUG

@@ -81,7 +81,7 @@ class Method:
     code_size: float
     log: any
 
-def create_superpmi_process(clrjit_dll_path, mch_path, mljit_enabled):
+def create_superpmi_process(clrjit_dll_path, mch_path, mljit_enabled, mljit_use_bc):
     l = threading.Event()
     l.set()
     s = threading.Semaphore()
@@ -98,6 +98,9 @@ def create_superpmi_process(clrjit_dll_path, mch_path, mljit_enabled):
         superpmi_env['DOTNET_MLJitEnabled'] = "1"
         superpmi_env['DOTNET_MLJitSavedPolicyPath'] = os.environ['DOTNET_MLJitSavedPolicyPath']
         superpmi_env['DOTNET_MLJitSavedCollectPolicyPath'] = os.environ['DOTNET_MLJitSavedCollectPolicyPath']
+
+        if mljit_use_bc:
+            superpmi_env['DOTNET_MLJitUseBC'] = "1"
 
     superpmi_args = [
             superpmi_exe, 
@@ -133,8 +136,8 @@ def create_superpmi_process(clrjit_dll_path, mch_path, mljit_enabled):
 
     return (p, t, q, (l, s))
 
-def create_many_superpmi_processes(clrjit_dll_path, mch_path, mljit_enabled):
-    return [create_superpmi_process(clrjit_dll_path, mch_path, mljit_enabled) for x in range(superpmi_process_count)]
+def create_many_superpmi_processes(clrjit_dll_path, mch_path, mljit_enabled, mljit_use_bc):
+    return [create_superpmi_process(clrjit_dll_path, mch_path, mljit_enabled, mljit_use_bc) for x in range(superpmi_process_count)]
 
 # not used, but useful for getting a complete list of results from JITted functions.
 def produce_mldump_file(corpus_file_path):
@@ -306,7 +309,7 @@ def superpmi_get_next_available_process(superpmi_processes):
 # FIXME: This is global and doesn't differentiate between different corpus files.
 ignore_indices = set()
 
-def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, superpmi_processes):
+def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, use_behavioral_cloning, cse_replay_seqs, superpmi_processes):
     if spmi_index in ignore_indices:
         return None
     
@@ -327,7 +330,7 @@ def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, s
                     result = None
                     ignore_indices.add(spmi_index)
                     print("[mljit] Creating new SuperPMI process...")
-                    superpmi_processes[pi] = create_superpmi_process(clrjit_dll, corpus_file_path, train_kind != None)
+                    superpmi_processes[pi] = create_superpmi_process(clrjit_dll, corpus_file_path, train_kind != None, use_behavioral_cloning)
                     p = -1
                 if result is not None:
                     if result.spmi_index != spmi_index:
@@ -340,14 +343,14 @@ def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, s
 
 # --------------------------------------------------------------------------------
 # 'train_kind' correpsonds to 'DOTNET_MLJitTrain'
-def collect_data(corpus_file_path, spmi_methods, train_kind=None, verbose_log=False):
+def collect_data(corpus_file_path, spmi_methods, train_kind=None, use_behavioral_cloning=False, verbose_log=False):
     spmi_methods = list(filter(lambda x: not (x in ignore_indices), spmi_methods))
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=superpmi_process_count) as executor:
         def create_jit_task(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs):
-            return executor.submit(jit, clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, superpmi_processes)
+            return executor.submit(jit, clrjit_dll, corpus_file_path, spmi_index, train_kind, use_behavioral_cloning, cse_replay_seqs, superpmi_processes)
 
-        superpmi_processes = create_many_superpmi_processes(clrjit_dll, corpus_file_path, train_kind != None)
+        superpmi_processes = create_many_superpmi_processes(clrjit_dll, corpus_file_path, train_kind != None, use_behavioral_cloning)
 
         if verbose_log:
             print("[mljit] Collecting data...")
