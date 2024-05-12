@@ -193,7 +193,6 @@ def create_agent():
         output_tensor_spec=action_spec,
         preprocessing_layers=preprocessing_layers,
         preprocessing_combiner=preprocessing_combiner,
-       # activation_fn=tf.keras.activations.softmax,
         fc_layer_params=(40, 40, 20))
 
     # critic_network = value_network.ValueNetwork(
@@ -209,7 +208,7 @@ def create_agent():
         actor_net=actor_network,
         value_net=critic_network,
         optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
-        importance_ratio_clipping=0.2,
+       # importance_ratio_clipping=0.2,
         lambda_value=0.0,
         discount_factor=0.0,
         entropy_regularization=0.01,
@@ -588,13 +587,9 @@ def collect_data(corpus_file_path, baseline, best_state, train_kind=1):
     data = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=train_kind)
     print('[mljit] Calculating rewards...')
 
-    for i in range(len(baseline)):
-        item_base = baseline[i]
-
+    for item_base in baseline:
         spmi_index = item_base.spmi_index
-
         item_best = best_state[spmi_index]
-
         for item in data:
             if item.spmi_index == spmi_index:
 
@@ -695,7 +690,7 @@ def plot_results(data_step_num, data_num_improvements, data_num_regressions):
 
 # Compare Results
 print_verbose_results = False
-def compare_results(data_step_num, data_num_improvements, data_num_regressions, step_num, baseline_indices):
+def compare_results(data_step_num, data_num_improvements, data_num_regressions, step_num, baseline, baseline_indices):
     print('[mljit] Collecting data for comparison...')
     policy_result = mljit_superpmi.collect_data(corpus_file_path, baseline_indices, train_kind=2) # policy
     print('[mljit] Comparing results...')
@@ -707,8 +702,7 @@ def compare_results(data_step_num, data_num_improvements, data_num_regressions, 
     num_regressions = 0
     for i in range(len(policy_result)):
         curr = policy_result[i]
-        for j in range(len(baseline)):
-            base = baseline[j]
+        for base in baseline:
 
             if curr.spmi_index == base.spmi_index:
                 best = best_state[curr.spmi_index]
@@ -736,7 +730,7 @@ def compare_results(data_step_num, data_num_improvements, data_num_regressions, 
 
     print('----- Evaluation Policy Results ----')
     print(f'Step:              {step_num}')
-    print(f'Total Methods:     {len(baseline)}')
+    print(f'Total Methods:     {len(baseline_indices)}')
     print(f'Improvements:      {num_improvements}')
     print(f'Improvement Score: {total_perf_score_improvement_diff}')
     print(f'Regressions:       {num_regressions}')
@@ -764,7 +758,7 @@ data_num_regressions = []
 will_compare_results = True
 
 if will_compare_results:
-    (new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, 0, eval_indices)
+    (new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, 0, eval_baseline, eval_indices)
     data_step_num = new_data_step_num
     data_num_improvements = new_data_num_improvements
     data_num_regressions = new_data_num_regressions
@@ -782,9 +776,13 @@ if not eval_only:
 
         baseline_methods = eval_baseline#partitioned_baseline[partition_index]
 
+        methods_group = defaultdict(list)
+        for m in baseline_methods:
+            methods_group[m.spmi_index].append(m)
+
         data = collect_data(corpus_file_path, baseline_methods, best_state)
         sequence_examples, monitor_dict = create_trajectories(data)
-        dataset = create_dataset(sequence_examples, train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=512)
+        dataset = create_dataset(sequence_examples, train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=1024)
         train(agent, dataset, monitor_dict)
 
         if not eval_only:
@@ -792,18 +790,18 @@ if not eval_only:
             save_policy(collect_policy_saver, saved_collect_policy_path)
 
         if will_compare_results:
-            (new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, global_step.numpy(), eval_indices)
+            (new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, global_step.numpy(), eval_baseline, eval_indices)
             num_improvements = new_data_num_improvements[len(new_data_num_improvements) - 1]
             num_regressions = new_data_num_regressions[len(new_data_num_regressions) - 1]
 
-            if not eval_only:
-                ratio = float(num_improvements)
-                if num_regressions != 0:
-                    ratio = float(num_improvements) / float(num_regressions)
-                if ratio > best_ratio:
-                    best_ratio = ratio
-                    best_policy_saver = create_policy_saver(agent)
-                    save_policy(best_policy_saver, os.path.join(saved_policy_path, '../best_policy'))
+            ratio = float(num_improvements)
+            if num_regressions != 0:
+                ratio = float(num_improvements) / float(num_regressions)
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_policy_saver = create_policy_saver(agent)
+                save_policy(best_policy_saver, os.path.join(saved_policy_path, '../best_policy'))
+
             data_step_num = new_data_step_num
             data_num_improvements = new_data_num_improvements
             data_num_regressions = new_data_num_regressions
