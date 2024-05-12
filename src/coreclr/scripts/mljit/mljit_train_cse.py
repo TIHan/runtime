@@ -37,6 +37,13 @@ from absl import logging
 def for_all(predicate, xs):
     return all(predicate(x) for x in xs)
 
+def partition_yield(xs, size):
+    for i in range(0, len(xs), size):
+        yield list(itertools.islice(xs, i, i + size))
+
+def partition(xs, size):
+    return list(partition_yield(xs, size))
+
 # From https://stackoverflow.com/questions/3173320/text-progress-bar-in-terminal-with-block-characters
 # Print iterations progress
 def printProgressBar (iteration, total, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "\r"):
@@ -201,7 +208,7 @@ def create_agent():
         action_spec=action_spec,
         actor_net=actor_network,
         value_net=critic_network,
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00001, epsilon=0.0003125),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
         importance_ratio_clipping=0.2,
         lambda_value=0.0,
         discount_factor=0.0,
@@ -211,8 +218,8 @@ def create_agent():
         value_function_l2_reg=0.0,
         value_pred_loss_coef=0.0,
         normalize_observations=False,
-        normalize_rewards=True,
-        reward_norm_clipping=1.0,
+        normalize_rewards=False,
+      #  reward_norm_clipping=1.0,
         debug_summaries=True,
         summarize_grads_and_vars=True)
 
@@ -479,8 +486,8 @@ def reset_metrics():
 
 # ---------------------------------------
 
-num_max_steps   = 1000000
-num_iterations  = 1000
+num_max_steps = 1000000
+step_size     = 1000
 
 def compute_dataset(sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size):
     return tf.data.Dataset.from_tensor_slices(sequence_examples).map(parse).unbatch().batch(train_sequence_length, drop_remainder=True).cache().shuffle(trajectory_shuffle_buffer_size).batch(batch_size, drop_remainder=True)
@@ -500,7 +507,7 @@ def train(agent, dataset, monitor_dict):
         print('[mljit] Training...')
         dataset_iter = create_dataset_iter(dataset)
         count = 0
-        for _ in range(num_iterations):
+        for _ in range(step_size):
             # When the data is not enough to fill in a batch, next(dataset_iter)
             # will throw StopIteration exception, logging a warning message instead
             # of killing the training when it happens.
@@ -516,7 +523,7 @@ def train(agent, dataset, monitor_dict):
 
             loss = agent.train(experience)
             update_metrics(experience, monitor_dict)
-            printProgressBar(count, num_iterations)
+            printProgressBar(count, step_size)
 
 def create_policy_saver(agent):
     return PolicySaver(agent.policy, batch_size=1, use_nest_path_signatures=False)
@@ -574,9 +581,7 @@ def build_distribution_monitor(data: Sequence[float]) -> Dict[str, float]:
   monitor_dict['mean'] = np.mean(data)
   return monitor_dict
 
-def collect_data(corpus_file_path, baseline, best_state, prev_state, train_kind=1):
-    acc = []
-
+def collect_data(corpus_file_path, baseline, best_state, train_kind=1):
     indices = flatten(list(map(lambda x: [x.spmi_index], baseline)))
 
     print('[mljit] Collecting data...')
@@ -589,45 +594,43 @@ def collect_data(corpus_file_path, baseline, best_state, prev_state, train_kind=
         spmi_index = item_base.spmi_index
 
         item_best = best_state[spmi_index]
-        item_prev = prev_state[spmi_index]
 
         for item in data:
             if item.spmi_index == spmi_index:
 
-                #reward = (item_best.perf_score - item.perf_score) / item_base.perf_score
+                # Reward Method 1
+                # reward = (item_best.perf_score - item.perf_score) / item_base.perf_score
 
-                # if item.perf_score < item_base.perf_score:
-                #     reward = 1.0
-                # elif item.perf_score > item_base.perf_score:
-                #     reward = -1.0
-                # else:
-                #     reward = 0.0
+                # Reward Method 2
+                # reward = (1.0 - (item.perf_score / item_base.perf_score))
 
-                reward = (1.0 - (item.perf_score / item_base.perf_score))
+                # Reward Method 3
+                if item.perf_score < item_base.perf_score:
+                    reward = 1.0
+                elif item.perf_score > item_base.perf_score:
+                    reward = -1.0
+                else:
+                    reward = 0.0
 
-                # if item.perf_score > item_base.perf_score:
-                #     all_ones = for_all(lambda x: x.cse_decision == 1, item.log)
-                #     all_zeroes = for_all(lambda x: x.cse_decision == 0, item.log)
-                #     if all_ones or all_zeroes:
-                #         reward = -1.0
+                # Clamp
+                if reward > 1.0:
+                    reward = 1.0
+                elif reward < -1.0:
+                    reward = -1.0
 
                 for i in range(len(item.log)):
-                    log_item = item.log[i]
-                    log_item_prev = item_prev.log[i] # unused
-                    log_item_base = item_base.log[i] # unused
-                    log_item_best = item_best.log[i] # unused
-                    log_item.reward = reward
+                    item.log[i].reward = reward
 
                 if item.perf_score < item_best.perf_score:
                     item_best = item
                 elif item.perf_score == item_best.perf_score and item.num_cse_usages < item_best.num_cse_usages:
                     item_best = item
-                    
-                acc = acc + [item.log]
 
         best_state[spmi_index] = item_best
-        prev_state[spmi_index] = item_prev
 
+    return data
+
+def create_trajectories(data):
     total_trajectory_length = sum(len(res.log) for res in data)
 
     monitor_dict = {}
@@ -640,8 +643,12 @@ def collect_data(corpus_file_path, baseline, best_state, prev_state, train_kind=
             [list(map(lambda x: x.reward, res.log)) for res in data]))
     monitor_dict[
         'reward_distribution'] = build_distribution_monitor(rewards)
+    
+    acc = []
+    for x in data:
+        acc = acc + [x.log]
 
-    print('[mljit] Creating sequence examples...')
+    print(f'[mljit] Creating trajectories: {len(acc)}...')
     return list(map(create_serialized_sequence_example, acc)), monitor_dict
 
 # ---------------------------------------
@@ -654,7 +661,12 @@ if not mljit_superpmi.mldump_file_exists():
 def filter_cse_methods(m):
     return m.is_valid and m.num_cse_candidates > 0 and m.perf_score > 0
 
-baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)[:5000]
+baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)
+
+partitioned_baseline = partition(baseline, 2000)
+
+eval_baseline = partitioned_baseline[0]
+eval_indices = list(map(lambda x: x.spmi_index, eval_baseline))
 
 # ---------------------------------------
 
@@ -671,9 +683,6 @@ if not eval_only:
     save_policy(collect_policy_saver, saved_collect_policy_path)
     save_policy(policy_saver, saved_policy_path)
 
-baseline_indices = list(map(lambda x: x.spmi_index, baseline))
-baseline = mljit_superpmi.collect_data(corpus_file_path, baseline_indices, train_kind=0)
-
 def plot_results(data_step_num, data_num_improvements, data_num_regressions):
     plt.figure(1)
     plt.clf()
@@ -685,8 +694,8 @@ def plot_results(data_step_num, data_num_improvements, data_num_regressions):
     plt.pause(0.0001)
 
 # Compare Results
-print_verbose_results = True
-def compare_results(data_step_num, data_num_improvements, data_num_regressions, step_num):
+print_verbose_results = False
+def compare_results(data_step_num, data_num_improvements, data_num_regressions, step_num, baseline_indices):
     print('[mljit] Collecting data for comparison...')
     policy_result = mljit_superpmi.collect_data(corpus_file_path, baseline_indices, train_kind=2) # policy
     print('[mljit] Comparing results...')
@@ -742,12 +751,11 @@ def compare_results(data_step_num, data_num_improvements, data_num_regressions, 
     return (data_step_num, data_num_improvements, data_num_regressions)
 
 print(f'[mljit] Setting up baseline...')
+eval_baseline = mljit_superpmi.collect_data(corpus_file_path, eval_indices, train_kind=0)
+
 best_state = dict()
 for x in baseline:
     best_state[x.spmi_index] = x
-prev_state = dict()
-for x in baseline:
-    prev_state[x.spmi_index] = x
 
 data_step_num = []
 data_num_improvements = []
@@ -756,50 +764,35 @@ data_num_regressions = []
 will_compare_results = True
 
 if will_compare_results:
-    (new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, 0)
+    (new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, 0, eval_indices)
     data_step_num = new_data_step_num
     data_num_improvements = new_data_num_improvements
     data_num_regressions = new_data_num_regressions
 
-baseline_groups = defaultdict(list)
-
-for x in baseline:
-    baseline_groups[x.num_cse_candidates].append(x)
-
-episode_count = 0
-best_ratio = -1000000.0
 if not eval_only:
+    episode_count = 0
+    best_ratio = -1000000.0
     while global_step.numpy() < num_max_steps:
         print(f'[mljit] Best ratio: {best_ratio}')
         print(f'[mljit] Current step: {global_step.numpy()}')
+        print(f'[mljit] Current episode: {episode_count}')
 
-        sequence_examples, monitor_dict = collect_data(corpus_file_path, baseline, best_state, prev_state)
-        dataset = create_dataset(sequence_examples, train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=1024)
+        partition_index = episode_count % len(partitioned_baseline)
+        print(f'[mljit] Current partition index: {partition_index}')
+
+        baseline_methods = eval_baseline#partitioned_baseline[partition_index]
+
+        data = collect_data(corpus_file_path, baseline_methods, best_state)
+        sequence_examples, monitor_dict = create_trajectories(data)
+        dataset = create_dataset(sequence_examples, train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=512)
         train(agent, dataset, monitor_dict)
-
-        # datasets = []
-        # for k, v in baseline_groups.items():
-        #     sequence_examples, monitor_dict = collect_data(corpus_file_path, v, best_state, prev_state)
-
-        #     train_sequence_length = k
-        #     batch_size = len(sequence_examples)
-
-        #     if k == 1:
-        #         train_sequence_length = 2
-        #         batch_size = int(len(sequence_examples) / 2)
-
-        #     dataset = create_dataset(sequence_examples, train_sequence_length=train_sequence_length, batch_size=batch_size, trajectory_shuffle_buffer_size=batch_size * 4)
-        #     datasets = datasets + [dataset]
-
-        # for dataset in datasets:
-        #     train(agent, dataset, monitor_dict)
 
         if not eval_only:
             save_policy(policy_saver, saved_policy_path)
             save_policy(collect_policy_saver, saved_collect_policy_path)
 
-        if will_compare_results and episode_count % 10 == 0:
-            (new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, global_step.numpy())
+        if will_compare_results:
+            (new_data_step_num, new_data_num_improvements, new_data_num_regressions) = compare_results(data_step_num, data_num_improvements, data_num_regressions, global_step.numpy(), eval_indices)
             num_improvements = new_data_num_improvements[len(new_data_num_improvements) - 1]
             num_regressions = new_data_num_regressions[len(new_data_num_regressions) - 1]
 
