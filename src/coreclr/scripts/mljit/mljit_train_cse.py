@@ -432,15 +432,15 @@ def collect_data(corpus_file_path, baseline, best_state, train_kind=1, use_behav
                 # reward = (item_best.perf_score - item.perf_score) / item_base.perf_score
 
                 # Reward Method 2
-                reward = (1.0 - (item.perf_score / item_base.perf_score))
+                # reward = (1.0 - (item.perf_score / item_base.perf_score))
 
                 # Reward Method 3
-                # if item.perf_score < item_base.perf_score:
-                #     reward = 1.0
-                # elif item.perf_score > item_base.perf_score:
-                #     reward = -1.0
-                # else:
-                #     reward = 0.0
+                if item.perf_score < item_base.perf_score:
+                    reward = 1.0
+                elif item.perf_score > item_base.perf_score:
+                    reward = -1.0
+                else:
+                    reward = 0.0
 
                 # Clamp
                 if reward > 1.0:
@@ -528,7 +528,7 @@ if build_warmstart:
 
     jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
     jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, saved_collect_policy_path, agent, create_trajectories=create_trajectories_for_bc, parse=parse_for_bc)
-    jit_runner = mljit_runner.JitRunner(jit_metrics, jit_trainer, collect_data=collect_data_for_bc, collect_data_no_training=collect_data_no_training_for_bc, step_size=1000, train_sequence_length=1, batch_size=64, trajectory_shuffle_buffer_size=1024, num_max_steps=50000)
+    jit_runner = mljit_runner.JitRunner(jit_metrics, jit_trainer, collect_data=collect_data_for_bc, collect_data_no_training=collect_data_no_training_for_bc, step_size=100000, train_sequence_length=1, batch_size=64, trajectory_shuffle_buffer_size=1024, num_max_steps=500000)
     jit_runner.run(partitioned_baseline[0])
 
     mljit_trainer.save_policy(jit_trainer.policy_saver, warmstart_policy_path)
