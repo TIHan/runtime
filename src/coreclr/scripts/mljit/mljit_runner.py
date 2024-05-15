@@ -32,8 +32,7 @@ from tf_agents.utils import common
 from absl import logging
 
 class JitRunner:
-    def __init__(self, jit_metrics: mljit_metrics.JitTensorBoardMetrics, jit_trainer: mljit_trainer.JitTrainer, collect_data, collect_data_no_training, step_size, train_sequence_length, batch_size, trajectory_shuffle_buffer_size, num_max_steps):
-        self.jit_metrics = jit_metrics
+    def __init__(self, jit_trainer: mljit_trainer.JitTrainer, collect_data, collect_data_no_training, step_size, train_sequence_length, batch_size, trajectory_shuffle_buffer_size, num_max_steps):
         self.jit_trainer = jit_trainer   
         self.collect_data = collect_data
         self.collect_data_no_training = collect_data_no_training
@@ -43,7 +42,7 @@ class JitRunner:
         self.trajectory_shuffle_buffer_size = trajectory_shuffle_buffer_size
         self.num_max_steps = num_max_steps
 
-    def run(self, baseline_methods):
+    def run(self, jit_metrics: mljit_metrics.JitTensorBoardMetrics, train_data, test_data):
 
         self.jit_trainer.save_policy()
 
@@ -52,21 +51,20 @@ class JitRunner:
             print(f'[mljit] Current step: {self.jit_trainer.step.numpy()}')
             print(f'[mljit] Current episode: {episode_count}')
 
-            print('[mljit] Collecting data...')
-            methods = self.collect_data(baseline_methods)
-            self.jit_trainer.train(self.jit_metrics, methods, step_size=self.step_size, train_sequence_length=self.train_sequence_length, batch_size=self.batch_size, trajectory_shuffle_buffer_size=self.trajectory_shuffle_buffer_size)
+            print('[mljit] Collecting train data...')
+            self.jit_trainer.train(jit_metrics, self.collect_data(train_data), step_size=self.step_size, train_sequence_length=self.train_sequence_length, batch_size=self.batch_size, trajectory_shuffle_buffer_size=self.trajectory_shuffle_buffer_size)
             self.jit_trainer.save_policy()
 
-            print('[mljit] Collecting data for comparisons...')
-            methods = self.collect_data_no_training(baseline_methods)
+            print('[mljit] Collecting test data for comparisons...')
+            test_methods = self.collect_data_no_training(test_data)
 
             num_improvements = 0
             num_regressions = 0
             improvement_score = 0
             regression_score = 0
 
-            for base in baseline_methods:
-                for curr in methods:
+            for base in test_data:
+                for curr in test_methods:
                     if base.spmi_index == curr.spmi_index:
                         if curr.perf_score < base.perf_score:
                             num_improvements = num_improvements + 1
@@ -75,4 +73,5 @@ class JitRunner:
                             num_regressions = num_regressions + 1
                             regression_score = regression_score + (curr.perf_score - base.perf_score)
 
-            self.jit_metrics.update_improvements_and_regressions(num_improvements, num_regressions, improvement_score, regression_score, self.jit_trainer.step)
+            jit_metrics.update_improvements_and_regressions(num_improvements, num_regressions, improvement_score, regression_score, self.jit_trainer.step)
+            episode_count = episode_count + 1

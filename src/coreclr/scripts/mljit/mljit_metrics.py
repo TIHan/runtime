@@ -112,7 +112,7 @@ class JitTensorBoardMetrics:
                     data=self.regression_score.result(),
                     step=step)
 
-    def update(self, data: Sequence[Any], step, experience):
+    def update(self, data: Sequence[Any], experience, step):
         """Updates metrics and exports to Tensorboard."""
         if tf.math.equal(step % self.summary_log_interval, 0):
             is_action = ~experience.is_boundary()

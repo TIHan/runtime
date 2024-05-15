@@ -81,7 +81,6 @@ class JitTrainer:
                 # of killing the training when it happens.
                 try:
                     experience = next(dataset_iter)
-                    #tf.print(experience, summarize=64)
                     count = count + 1
                 except StopIteration:
                     logging.warning(
@@ -90,5 +89,5 @@ class JitTrainer:
                     break
 
                 self.agent.train(experience)
-                jit_metrics.update(data, self.step, experience)
+                jit_metrics.update(data, experience, self.step)
                 mljit_utils.print_progress_bar(count, step_size)

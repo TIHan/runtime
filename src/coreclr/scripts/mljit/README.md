@@ -55,12 +55,10 @@ From these steps, you should be able to build the JIT and run the python script 
     - When `DOTNET_MLJITEnabled=1`, these are the types of ways to execute policies.
     - Used in the JIT lib, but set in `mljit_superpmi.py`.
     - There are three modes:
-        - `0` - Doesn't execute a policy, but records the inputs/outputs of the current CSE heuristic decisions. Requires `DOTNET_MLJitSavedCollectPolicyPath` to be set.
-        - `1` - Executes the `collect_policy` to make CSE decisions. It's stochastic when it makes a decision which is why this mode is used for training, it's trying to be used for random exploration. Records the inputs/outputs when the policy gets executed. Requires `DOTNET_MLJitSavedCollectPolicyPath` to be set.
-        - `2` - Executes the `policy` to make CSE decisions. This is meant to be the final policy produced after training and used for evaluation. Records the inputs/outputs when the policy gets executed. Requires `DOTNET_MLJitSavedPolicyPath` to be set.
-    - Example: `DOTNET_MLJitTrain=1` for random exploration.
-- `DOTNET_MLJitUseBC`
-    - TODO
+        - `0` - Doesn't execute a policy, but records the inputs/outputs of the current CSE heuristic decisions. Requires `DOTNET_MLJitSavedPolicyPath` to be set.
+        - `1` - Executes the `policy` to make CSE decisions. This is meant to be the final policy produced after training and used for evaluation. Records the inputs/outputs when the policy gets executed. Requires `DOTNET_MLJitSavedPolicyPath` to be set.
+        - `2` - Executes the `collect_policy` to make CSE decisions. It's stochastic when it makes a decision which is why this mode is used for training, it's trying to be used for random exploration. Records the inputs/outputs when the policy gets executed. Requires `DOTNET_MLJitSavedCollectPolicyPath` to be set.
+    - Example: `DOTNET_MLJitTrain=2` for random exploration.
 
 ## `mljit_train_cse.py`
 

@@ -416,14 +416,6 @@ MLJIT_CsePolicyBase* mljit_create_cse_collect_policy(const char* savedPolicyDir)
     return policy;
 }
 
-bool mljit_is_using_behavioral_cloning()
-{
-    const char* result = getenv("DOTNET_MLJitUseBC");
-    if (!result || (strcmp(result, "1") != 0))
-        return false;
-    return true;
-}
-
 MLJIT_CsePolicyBase* mljit_try_create_cse_policy()
 {
     const char* mljitEnabled = getenv("DOTNET_MLJitEnabled");
@@ -449,10 +441,6 @@ MLJIT_CsePolicyBase* mljit_try_create_cse_collect_policy()
     if (!savedPolicyDir)
         return nullptr;
 
-    if (mljit_is_using_behavioral_cloning())
-    {
-        return mljit_create_cse_policy(savedPolicyDir);
-    }
     return mljit_create_cse_collect_policy(savedPolicyDir);
 }
 

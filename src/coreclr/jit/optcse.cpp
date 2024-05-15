@@ -129,7 +129,7 @@ void mljit_policy_set_cse_inputs(MLJIT_CsePolicyBase* policy, Compiler* compiler
         (float)(deMinimusAdj + log(max(deMinimis, cse->csdUseCount * cse->csdUseWtCnt))));
     policy->SetInput_log_cse_use_count_weighted_times_num_local_occurrences(
         (float)(deMinimusAdj + log(max(deMinimis, cse->numLocalOccurrences * cse->csdUseWtCnt))));
-    policy->SetInput_cse_distance((float)(/* booleanScale */ 5 * ((double)(blockSpread) / numBBs)));
+    policy->SetInput_cse_distance(((float)(blockSpread) / (float)numBBs));
     policy->SetInput_cse_is_containable(isContainable);
     policy->SetInput_cse_is_cheap_containable(isContainable && isLowCost);
     policy->SetInput_cse_is_live_across_call_in_LSRA_ordering(isLiveAcrossCallLSRA);
@@ -167,13 +167,13 @@ bool mljit_run_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse)
 }
 
 // For ML training. Does not execute the policy. Just sets the inputs and outputs for logging.
-void mljit_log_collect_policy(Compiler* compiler, int minCseCost, CSEdsc* cse, bool didCse)
+void mljit_log_action(Compiler* compiler, int minCseCost, CSEdsc* cse, bool didCse)
 {
-    if (currentCollectPolicy)
+    if (currentPolicy)
     {
-        mljit_policy_set_cse_inputs(currentCollectPolicy, compiler, minCseCost, cse);
-        currentCollectPolicy->SetOutput_cse_decision(didCse);
-        currentCollectPolicy->LogAction();
+        mljit_policy_set_cse_inputs(currentPolicy, compiler, minCseCost, cse);
+        currentPolicy->SetOutput_cse_decision(didCse);
+        currentPolicy->LogAction();
     }
 }
 #endif // DEBUG
@@ -5198,7 +5198,7 @@ void CSE_HeuristicCommon::ConsiderCandidates()
 #ifdef DEBUG
             if (mljitEnabled && (mltrain == 0))
             {
-                mljit_log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), false);
+                mljit_log_action(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), false);
             }
 #endif // DEBUG
             continue;
@@ -5230,11 +5230,11 @@ void CSE_HeuristicCommon::ConsiderCandidates()
 
 #ifdef DEBUG
         bool doCSE = false;
-        if (mljitEnabled && (mltrain == 1))
+        if (mljitEnabled && (mltrain == 2))
         {
             doCSE = mljit_run_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
         }
-        else if (mljitEnabled && (mltrain == 2))
+        else if (mljitEnabled && (mltrain == 1))
         {
             doCSE = mljit_run_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
         }
@@ -5291,7 +5291,7 @@ void CSE_HeuristicCommon::ConsiderCandidates()
 #ifdef DEBUG
         if (mljitEnabled && (mltrain == 0))
         {
-            mljit_log_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), doCSE);
+            mljit_log_action(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), doCSE);
         }
 #endif // DEBUG
     }
@@ -5637,7 +5637,7 @@ void Compiler::optOptimizeCSEs()
 
 #if DEBUG
     int mltrain = JitConfig.MLJitTrain();
-    if (collectPolicy && ((mltrain == 0) || (mltrain == 1)))
+    if (collectPolicy && (mltrain == 2))
     {
         auto path = JitConfig.MLJitTrainLogFile();
         if (path)
@@ -5645,7 +5645,7 @@ void Compiler::optOptimizeCSEs()
             collectPolicy->SaveLoggedActionsAsJson(path);
         }
     }
-    else if (policy && (mltrain == 2))
+    else if (policy && ((mltrain == 0) || (mltrain == 1)))
     {
         auto path = JitConfig.MLJitTrainLogFile();
         if (path)

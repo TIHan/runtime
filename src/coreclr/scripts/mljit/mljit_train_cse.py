@@ -29,7 +29,7 @@ from tf_agents.networks import network
 from tf_agents.networks import q_rnn_network
 from tf_agents.utils import nest_utils
 from tf_agents.networks import actor_distribution_network, value_network
-from tf_agents.policies import PolicySaver, random_tf_policy, py_tf_policy
+from tf_agents.policies import PolicySaver, random_tf_policy, py_tf_policy, fixed_policy
 from tf_agents.utils import common as common_utils
 from tf_agents.environments import tf_environment
 from tf_agents import specs
@@ -39,10 +39,10 @@ from tf_agents.policies import policy_loader
 
 # Use 'saved_model_cli show --dir saved_policy\ --tag_set serve --signature_def action' from the command line to see the inputs/outputs of the policy.
 
-corpus_file_path  = os.environ['DOTNET_MLJitCorpusFile']
-saved_policy_path = os.environ['DOTNET_MLJitSavedPolicyPath']
+corpus_file_path          = os.environ['DOTNET_MLJitCorpusFile']
+saved_policy_path         = os.environ['DOTNET_MLJitSavedPolicyPath']
 saved_collect_policy_path = os.environ['DOTNET_MLJitSavedCollectPolicyPath']
-log_path = os.environ['DOTNET_MLJitLogPath']
+log_path                  = os.environ['DOTNET_MLJitLogPath']
 
 warmstart_policy_path = os.path.join(log_path, 'warmstart_policy/')
   
@@ -158,7 +158,8 @@ def create_ppo_agent():
         action_spec=action_spec,
         actor_net=actor_network,
         value_net=critic_network,
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
+        optimizer=tf.keras.optimizers.Adam(), #(learning_rate=0.00003, epsilon=0.0003125),
+        importance_ratio_clipping=0.2,
         lambda_value=0.0,
         discount_factor=0.0,
         entropy_regularization=0.01,
@@ -418,10 +419,10 @@ def parse(serialized_proto, use_behavioral_cloning):
 
 # ---------------------------------------
 
-def collect_data(corpus_file_path, baseline, best_state, train_kind=1, use_behavioral_cloning=False):
+def collect_data(corpus_file_path, baseline, best_state, train_kind):
     indices = mljit_utils.flatten(list(map(lambda x: [x.spmi_index], baseline)))
 
-    data = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=train_kind, use_behavioral_cloning=use_behavioral_cloning)
+    data = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=train_kind)
     for item_base in baseline:
         spmi_index = item_base.spmi_index
         item_best = best_state[spmi_index]
@@ -432,24 +433,24 @@ def collect_data(corpus_file_path, baseline, best_state, train_kind=1, use_behav
                 # reward = (item_best.perf_score - item.perf_score) / item_base.perf_score
 
                 # Reward Method 2
-                # reward = (1.0 - (item.perf_score / item_base.perf_score))
+                reward = (1.0 - (item.perf_score / item_base.perf_score))
 
                 # Reward Method 3
-                if item.perf_score < item_base.perf_score:
-                    reward = 1.0
-                elif item.perf_score > item_base.perf_score:
-                    reward = -1.0
-                else:
-                    reward = 0.0
+                # if item.perf_score < item_base.perf_score:
+                #     reward = 1.0
+                # elif item.perf_score > item_base.perf_score:
+                #     reward = -1.0
+                # else:
+                #     reward = 0.0
 
                 # Clamp
-                if reward > 1.0:
-                    reward = 1.0
-                elif reward < -1.0:
-                    reward = -1.0
+                # if reward > 1.0:
+                #     reward = 1.0
+                # elif reward < -1.0:
+                #     reward = -1.0
 
-                for i in range(len(item.log)):
-                    item.log[i].reward = reward
+                for log_item in item.log:
+                    log_item.reward = reward
 
                 if item.perf_score < item_best.perf_score:
                     item_best = item
@@ -482,9 +483,6 @@ baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)
 
 partitioned_baseline = mljit_utils.partition(baseline, 2000)
 
-eval_baseline = partitioned_baseline[0]
-eval_indices = list(map(lambda x: x.spmi_index, eval_baseline))
-
 best_state = dict()
 for x in baseline:
     best_state[x.spmi_index] = x
@@ -493,6 +491,9 @@ for x in baseline:
 
 # Training
 
+def collect_data_no_training(x):
+    return collect_data(corpus_file_path, x, best_state, train_kind=1)
+
 def create_trajectories_for_bc(x):
     return create_trajectories(x, use_behavioral_cloning=True)
 
@@ -500,10 +501,7 @@ def parse_for_bc(x):
     return parse(x, use_behavioral_cloning=True)
 
 def collect_data_for_bc(x):
-    return collect_data(corpus_file_path, x, best_state, train_kind=0, use_behavioral_cloning=True)
-
-def collect_data_no_training_for_bc(x):
-    return collect_data(corpus_file_path, x, best_state, train_kind=2, use_behavioral_cloning=True)
+    return collect_data(corpus_file_path, x, best_state, train_kind=0)
 
 def create_trajectories_for_ppo(x):
     return create_trajectories(x, use_behavioral_cloning=False)
@@ -512,10 +510,7 @@ def parse_for_ppo(x):
     return parse(x, use_behavioral_cloning=False)
 
 def collect_data_for_ppo(x):
-    return collect_data(corpus_file_path, x, best_state, use_behavioral_cloning=False)
-
-def collect_data_no_training_for_ppo(x):
-    return collect_data(corpus_file_path, x, best_state, train_kind=2, use_behavioral_cloning=False)
+    return collect_data(corpus_file_path, x, best_state, train_kind=2)
 
 # TODO: Make this part of the command line args.
 build_warmstart = False
@@ -527,9 +522,21 @@ if build_warmstart:
     agent = create_bc_agent()
 
     jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
-    jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, saved_collect_policy_path, agent, create_trajectories=create_trajectories_for_bc, parse=parse_for_bc)
-    jit_runner = mljit_runner.JitRunner(jit_metrics, jit_trainer, collect_data=collect_data_for_bc, collect_data_no_training=collect_data_no_training_for_bc, step_size=100000, train_sequence_length=1, batch_size=64, trajectory_shuffle_buffer_size=1024, num_max_steps=500000)
-    jit_runner.run(partitioned_baseline[0])
+    jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, 
+                                           saved_collect_policy_path, 
+                                           agent, 
+                                           create_trajectories=create_trajectories_for_bc, 
+                                           parse=parse_for_bc)
+    jit_runner  = mljit_runner.JitRunner(jit_trainer, 
+                                         collect_data=collect_data_for_bc, 
+                                         collect_data_no_training=collect_data_no_training, 
+                                         step_size=100000, 
+                                         train_sequence_length=1, 
+                                         batch_size=64, 
+                                         trajectory_shuffle_buffer_size=1024, 
+                                         num_max_steps=500000)
+
+    jit_runner.run(jit_metrics, train_data=partitioned_baseline[0], test_data=partitioned_baseline[0][:200])
 
     mljit_trainer.save_policy(jit_trainer.policy_saver, warmstart_policy_path)
 else:
@@ -540,10 +547,26 @@ else:
     if use_warmstart:
         agent.policy.update(policy_loader.load(warmstart_policy_path))
 
+    # In the beginning, force the exploration policy to be incentivised to return 'false' for CSE decisions.
+    # Anecdotally, the policy trains better when it starts making 'false' decisions more than 'true' decisions.
+    agent.collect_policy.update(fixed_policy.FixedPolicy(tf.constant(0, dtype=tf.int64), agent.time_step_spec, agent.action_spec))
+
     jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
-    jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, saved_collect_policy_path, agent, create_trajectories=create_trajectories_for_ppo, parse=parse_for_ppo)
-    jit_runner = mljit_runner.JitRunner(jit_metrics, jit_trainer, collect_data=collect_data_for_ppo, collect_data_no_training=collect_data_no_training_for_ppo, step_size=1000, train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=1024, num_max_steps=1000000)
-    jit_runner.run(partitioned_baseline[0])
+    jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, 
+                                           saved_collect_policy_path, 
+                                           agent, 
+                                           create_trajectories=create_trajectories_for_ppo, 
+                                           parse=parse_for_ppo)
+    jit_runner  = mljit_runner.JitRunner(jit_trainer, 
+                                         collect_data=collect_data_for_ppo, 
+                                         collect_data_no_training=collect_data_no_training, 
+                                         step_size=300, 
+                                         train_sequence_length=16, 
+                                         batch_size=256, 
+                                         trajectory_shuffle_buffer_size=1024, 
+                                         num_max_steps=1000000)
+
+    jit_runner.run(jit_metrics, train_data=partitioned_baseline[1], test_data=partitioned_baseline[1][:200])
 
 # ---------------------------------------
 
