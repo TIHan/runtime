@@ -158,8 +158,8 @@ def create_ppo_agent():
         action_spec=action_spec,
         actor_net=actor_network,
         value_net=critic_network,
-        optimizer=tf.keras.optimizers.Adam(), #(learning_rate=0.00003, epsilon=0.0003125),
-        importance_ratio_clipping=0.2,
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001), #epsilon=0.0003125),
+        #importance_ratio_clipping=0.2,
         lambda_value=0.0,
         discount_factor=0.0,
         entropy_regularization=0.01,
@@ -560,13 +560,13 @@ else:
     jit_runner  = mljit_runner.JitRunner(jit_trainer, 
                                          collect_data=collect_data_for_ppo, 
                                          collect_data_no_training=collect_data_no_training, 
-                                         step_size=300, 
-                                         train_sequence_length=16, 
-                                         batch_size=256, 
-                                         trajectory_shuffle_buffer_size=1024, 
+                                         step_size=250, 
+                                         train_sequence_length=int(16 / 2), 
+                                         batch_size=int(256 / 4), 
+                                         trajectory_shuffle_buffer_size=int(1024 / 2), 
                                          num_max_steps=1000000)
 
-    jit_runner.run(jit_metrics, train_data=partitioned_baseline[1], test_data=partitioned_baseline[1][:200])
+    jit_runner.run(jit_metrics, train_data=partitioned_baseline[1][:1000], test_data=partitioned_baseline[1][:100])
 
 # ---------------------------------------
 
