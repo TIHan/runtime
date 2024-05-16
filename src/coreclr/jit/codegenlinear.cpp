@@ -827,7 +827,7 @@ void CodeGen::genCodeForBBlist()
             assert(!block->isBBCallFinallyPairTail());
             assert(!block->KindIs(BBJ_CALLFINALLY));
 
-            GetEmitter()->emitLoopAlignment(DEBUG_ARG1(block->KindIs(BBJ_ALWAYS) && !removedJmp));
+            GetEmitter()->emitLoopAlignment(MLJIT_ARG1(block->KindIs(BBJ_ALWAYS) && !removedJmp));
         }
 
         if (!block->IsLast() && block->Next()->isLoopAlign())

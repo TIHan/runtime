@@ -12438,7 +12438,7 @@ BYTE* emitter::emitOutputAlign(insGroup* ig, instrDesc* id, BYTE* dst)
 {
     instrDescAlign* alignInstr = (instrDescAlign*)id;
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(MLJIT)
     // For cases where 'align' was placed behind a 'jmp' in an IG that does not
     // immediately preced the loop IG, we do not know in advance the offset of
     // IG having loop. For such cases, skip the padding calculation validation.
@@ -18017,7 +18017,7 @@ emitter::insFormat emitter::ExtractMemoryFormat(insFormat insFmt) const
     return IF_NONE;
 }
 
-#if defined(DEBUG) || defined(LATE_DISASM)
+#if defined(DEBUG) || defined(LATE_DISASM) || defined(MLJIT)
 
 //----------------------------------------------------------------------------------------
 // getInsExecutionCharacteristics:

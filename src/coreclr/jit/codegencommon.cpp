@@ -2047,7 +2047,10 @@ void CodeGen::genEmitMachineCode()
         }
     }
 
+#elif MLJIT
+    unsigned instrCount;
 #endif // DEBUG
+
 
     /* We've finished collecting all the unwind information for the function. Now reserve
        space for it from the VM.
@@ -2074,7 +2077,7 @@ void CodeGen::genEmitMachineCode()
     codeSize =
         GetEmitter()->emitEndCodeGen(compiler, trackedStackPtrsContig, GetInterruptible(), IsFullPtrRegMapRequired(),
                                      compiler->compHndBBtabCount, &prologSize, &epilogSize, codePtr, &codePtrRW,
-                                     &coldCodePtr, &coldCodePtrRW, &consPtr, &consPtrRW DEBUGARG(&instrCount));
+                                     &coldCodePtr, &coldCodePtrRW, &consPtr, &consPtrRW MLJITARG(&instrCount));
 
 #ifdef DEBUG
     assert(compiler->compCodeGenDone == false);
@@ -2088,9 +2091,13 @@ void CodeGen::genEmitMachineCode()
         printf("; END METHOD %s\n", compiler->eeGetMethodFullName(compiler->info.compMethodHnd));
     }
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(MLJIT)
     const bool dspMetrics     = compiler->opts.dspMetrics;
+#if defined(DEBUG)
     const bool dspSummary     = compiler->opts.disAsm || verbose;
+#else
+    const bool dspSummary     = false;
+#endif 
     const bool dspMetricsOnly = dspMetrics && !dspSummary;
 
     if (dspSummary || dspMetrics)
@@ -2109,15 +2116,21 @@ void CodeGen::genEmitMachineCode()
         {
             printf(", num cse %d num cand %d", compiler->optCSEcount, compiler->optCSECandidateCount);
 
+#if defined(DEBUG)
             CSE_HeuristicCommon* const cseHeuristic = compiler->optGetCSEheuristic();
             if (cseHeuristic != nullptr)
             {
                 cseHeuristic->DumpMetrics();
             }
+#endif
 
             if (compiler->info.compMethodSuperPMIIndex >= 0)
             {
+#if defined(MLJIT)
+                printf(" spmi index %d\n", compiler->info.compMethodSuperPMIIndex);
+#else
                 printf(" spmi index %d", compiler->info.compMethodSuperPMIIndex);
+#endif
             }
         }
 
@@ -2128,22 +2141,27 @@ void CodeGen::genEmitMachineCode()
         }
 #endif // TRACK_LSRA_STATS
 
+#ifdef DEBUG
         printf(" (MethodHash=%08x) for method %s (%s)\n", compiler->info.compMethodHash(), compiler->info.compFullName,
                compiler->compGetTieringName(true));
+
 
         if (!dspMetricsOnly)
         {
             printf("; ============================================================\n\n");
         }
+#endif
 
         fflush(jitstdout());
     }
 
+#ifdef DEBUG
     if (verbose)
     {
         printf("*************** After end code gen, before unwindEmit()\n");
         GetEmitter()->emitDispIGlist(/* displayInstructions */ true);
     }
+#endif
 #else
     if (compiler->opts.disAsm)
     {

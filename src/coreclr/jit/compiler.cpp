@@ -1842,6 +1842,10 @@ void Compiler::compInit(ArenaAllocator*       pAlloc,
     }
 #endif // defined(DEBUG) || defined(LATE_DISASM) || DUMP_FLOWGRAPHS
 
+#if defined(MLJIT)
+    info.compMethodSuperPMIIndex = g_jitHost->getIntConfigValue(W("SuperPMIMethodContextNumber"), -1);
+#endif // defined(MLJIT)
+
 #if defined(DEBUG)
     info.compMethodHashPrivate = 0;
 #endif // defined(DEBUG)
@@ -3095,6 +3099,10 @@ void Compiler::compInitOptions(JitFlags* jitFlags)
         opts.optRepeatCount = JitConfig.JitOptRepeatCount();
     }
 #endif // !DEBUG
+
+#ifdef MLJIT
+    opts.dspMetrics = (JitConfig.JitMetrics() != 0);
+#endif // MLJIT
 
 #ifndef DEBUG
     if (opts.disAsm)
@@ -5367,7 +5375,7 @@ void Compiler::compCompile(void** methodCodePtr, uint32_t* methodCodeSize, JitFl
         INDEBUG(sprintf_s(debugPart, 128, ", hash=0x%08x%s", info.compMethodHash(), compGetStressMessage()));
 
         char metricPart[128] = {0};
-#ifdef DEBUG
+#if defined(DEBUG) || defined(MLJIT)
         if (JitConfig.JitMetrics() > 0)
         {
             sprintf_s(metricPart, 128, ", perfScore=%.2f, numCse=%u", Metrics.PerfScore, optCSEcount);

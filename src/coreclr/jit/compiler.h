@@ -46,6 +46,7 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #ifdef LATE_DISASM
 #include "disasm.h"
 #endif
+#include "mljit.h"
 
 #include "codegeninterface.h"
 #include "regset.h"
@@ -9877,7 +9878,7 @@ public:
         bool disDiffable;  // Makes the Disassembly code 'diff-able'
         bool disAlignment; // Display alignment boundaries in disassembly code
         bool disCodeBytes; // Display instruction code bytes in disassembly code
-#ifdef DEBUG
+#if defined(DEBUG) || defined(MLJIT)
         bool compProcedureSplittingEH; // Separate cold code from hot code for functions with EH
         bool dspCode;                  // Display native code generated
         bool dspEHTable;               // Display the EH table reported to the VM
@@ -10224,6 +10225,10 @@ public:
         int         compMethodSuperPMIIndex; // useful when debugging under SuperPMI
 
 #endif // defined(DEBUG) || defined(LATE_DISASM) || DUMP_FLOWGRAPHS
+
+#if defined(MLJIT)
+        int compMethodSuperPMIIndex; // useful when debugging under SuperPMI
+#endif // defined(MLJIT)
 
 #if defined(DEBUG)
         // Method hash is logically const, but computed

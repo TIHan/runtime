@@ -34,7 +34,7 @@ unsigned emitEndCodeGen(Compiler*         comp,
                         void**            coldCodeAddr,
                         void**            coldCodeAddrRW,
                         void**            consAddr,
-                        void** consAddrRW DEBUGARG(unsigned* instrCount));
+                        void** consAddrRW MLJITARG(unsigned* instrCount));
 
 /************************************************************************/
 /*                      Method prolog and epilog                        */

@@ -8232,7 +8232,7 @@ regNumber emitter::emitInsTernary(instruction ins, emitAttr attr, GenTree* dst, 
     return dst->GetRegNum();
 }
 
-#if defined(DEBUG) || defined(LATE_DISASM)
+#if defined(DEBUG) || defined(LATE_DISASM) || defined(MLJIT)
 
 //----------------------------------------------------------------------------------------
 // getInsExecutionCharacteristics:

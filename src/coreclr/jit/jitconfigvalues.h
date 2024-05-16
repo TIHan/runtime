@@ -470,7 +470,7 @@ CONFIG_INTEGER(JitCSEHash, W("JitCSEHash"), -1)
 CONFIG_INTEGER(JitCSEMask, W("JitCSEMask"), 0)
 
 // Enable metric output in jit disasm and elsewhere
-CONFIG_INTEGER(JitMetrics, W("JitMetrics"), 0)
+RELEASE_CONFIG_INTEGER(JitMetrics, W("JitMetrics"), 0)
 
 // When nonzero, choose CSE candidates randomly, with hash salt specified by the (decimal) value of the config.
 CONFIG_INTEGER(JitRandomCSE, W("JitRandomCSE"), 0)
@@ -794,9 +794,9 @@ CONFIG_INTEGER(JitDispIns, W("JitDispIns"), 0)
 // Allow to enregister locals with struct type.
 RELEASE_CONFIG_INTEGER(JitEnregStructLocals, W("JitEnregStructLocals"), 1)
 
-CONFIG_INTEGER(MLJitEnabled, W("MLJitEnabled"), 0)
-CONFIG_INTEGER(MLJitTrain, W("MLJitTrain"), 0)
-CONFIG_STRING(MLJitTrainLogFile, W("MLJitTrainLogFile"))
+RELEASE_CONFIG_INTEGER(MLJitEnabled, W("MLJitEnabled"), 0)
+RELEASE_CONFIG_INTEGER(MLJitTrain, W("MLJitTrain"), 0)
+RELEASE_CONFIG_STRING(MLJitTrainLogFile, W("MLJitTrainLogFile"))
 
 #undef CONFIG_INTEGER
 #undef CONFIG_STRING

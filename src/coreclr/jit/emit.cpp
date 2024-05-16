@@ -1386,7 +1386,7 @@ int emitter::instrDesc::idAddrUnion::iiaGetJitDataOffset() const
     return Compiler::eeGetJitDataOffs(iiaFieldHnd);
 }
 
-#if defined(DEBUG) || defined(LATE_DISASM)
+#if defined(DEBUG) || defined(LATE_DISASM) || defined(MLJIT)
 
 //----------------------------------------------------------------------------------------
 // insEvaluateExecutionCost:
@@ -2883,7 +2883,7 @@ void* emitter::emitAddLabel(VARSET_VALARG_TP    GCvars,
         // This is not an EXTEND group.
         assert((emitCurIG->igFlags & IGF_EXTEND) == 0);
 
-#if defined(DEBUG) || defined(LATE_DISASM)
+#if defined(DEBUG) || defined(LATE_DISASM) || defined(MLJIT)
         emitCurIG->igWeight    = getCurrentBlockWeight();
         emitCurIG->igPerfScore = 0.0;
 #endif
@@ -4361,7 +4361,7 @@ size_t emitter::emitIssue1Instr(insGroup* ig, instrDesc* id, BYTE** dp)
 
     is = emitOutputInstr(ig, id, dp);
 
-#if defined(DEBUG) || defined(LATE_DISASM)
+#if defined(DEBUG) || defined(LATE_DISASM) || defined(MLJIT)
     float insExeCost = insEvaluateExecutionCost(id);
     // All compPerfScore calculations must be performed using doubles
     double insPerfScore = (double)(ig->igWeight / (double)BB_UNITY_WEIGHT) * insExeCost;
@@ -5597,7 +5597,7 @@ void emitter::emitCheckAlignFitInCurIG(unsigned nAlignInstr)
 //                     'align' instruction of that group.
 //      isPlacedBehindJmp - DEBUG only. 'true' if this align instruction is placed after an unconditional jump.
 //
-void emitter::emitLoopAlign(unsigned paddingBytes, bool isFirstAlign DEBUG_ARG(bool isPlacedBehindJmp))
+void emitter::emitLoopAlign(unsigned paddingBytes, bool isFirstAlign MLJIT_ARG(bool isPlacedBehindJmp))
 {
     // Determine if 'align' instruction about to be generated will
     // fall in current IG or next.
@@ -5647,7 +5647,7 @@ void emitter::emitLoopAlign(unsigned paddingBytes, bool isFirstAlign DEBUG_ARG(b
         id->idaLoopHeadPredIG = nullptr;
     }
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(MLJIT)
     id->isPlacedAfterJmp = isPlacedBehindJmp;
 #endif
 
@@ -5671,7 +5671,7 @@ void emitter::emitLoopAlign(unsigned paddingBytes, bool isFirstAlign DEBUG_ARG(b
 //      alignmentBoundary - The boundary at which loop needs to be aligned.
 //      isPlacedBehindJmp - DEBUG only. 'true' if this align instruction is placed after an unconditional jump.
 //
-void emitter::emitLongLoopAlign(unsigned alignmentBoundary DEBUG_ARG(bool isPlacedBehindJmp))
+void emitter::emitLongLoopAlign(unsigned alignmentBoundary MLJIT_ARG(bool isPlacedBehindJmp))
 {
 #if defined(TARGET_XARCH)
     unsigned nPaddingBytes    = alignmentBoundary - 1;
@@ -5693,13 +5693,13 @@ void emitter::emitLongLoopAlign(unsigned alignmentBoundary DEBUG_ARG(bool isPlac
     bool isFirstAlign = true;
     while (insAlignCount)
     {
-        emitLoopAlign(paddingBytes, isFirstAlign DEBUG_ARG(isPlacedBehindJmp));
+        emitLoopAlign(paddingBytes, isFirstAlign MLJIT_ARG(isPlacedBehindJmp));
         insAlignCount--;
         isFirstAlign = false;
     }
 
 #if defined(TARGET_XARCH)
-    emitLoopAlign(lastInsAlignSize, isFirstAlign DEBUG_ARG(isPlacedBehindJmp));
+    emitLoopAlign(lastInsAlignSize, isFirstAlign MLJIT_ARG(isPlacedBehindJmp));
 #endif
 }
 
@@ -5730,7 +5730,7 @@ void emitter::emitConnectAlignInstrWithCurIG()
 //                    mark it as IGF_HAS_ALIGN to indicate that a next or a future
 //                    IG is a loop that needs alignment.
 //
-void emitter::emitLoopAlignment(DEBUG_ARG1(bool isPlacedBehindJmp))
+void emitter::emitLoopAlignment(MLJIT_ARG1(bool isPlacedBehindJmp))
 {
     unsigned paddingBytes;
 
@@ -5740,13 +5740,13 @@ void emitter::emitLoopAlignment(DEBUG_ARG1(bool isPlacedBehindJmp))
     if ((emitComp->opts.compJitAlignLoopBoundary > 16) && (!emitComp->opts.compJitAlignLoopAdaptive))
     {
         paddingBytes = emitComp->opts.compJitAlignLoopBoundary;
-        emitLongLoopAlign(paddingBytes DEBUG_ARG(isPlacedBehindJmp));
+        emitLongLoopAlign(paddingBytes MLJIT_ARG(isPlacedBehindJmp));
     }
     else
     {
         emitCheckAlignFitInCurIG(1);
         paddingBytes = MAX_ENCODED_SIZE;
-        emitLoopAlign(paddingBytes, true DEBUG_ARG(isPlacedBehindJmp));
+        emitLoopAlign(paddingBytes, true MLJIT_ARG(isPlacedBehindJmp));
     }
 #elif defined(TARGET_ARM64)
     // For Arm64, each align instruction is 4-bytes long because of fixed-length encoding.
@@ -5759,7 +5759,7 @@ void emitter::emitLoopAlignment(DEBUG_ARG1(bool isPlacedBehindJmp))
     {
         paddingBytes = emitComp->opts.compJitAlignLoopBoundary;
     }
-    emitLongLoopAlign(paddingBytes DEBUG_ARG(isPlacedBehindJmp));
+    emitLongLoopAlign(paddingBytes MLJIT_ARG(isPlacedBehindJmp));
 #endif
 
     assert(emitLastIns->idIns() == INS_align);
@@ -6652,7 +6652,7 @@ unsigned emitter::emitEndCodeGen(Compiler*         comp,
                                  void**            coldCodeAddr,
                                  void**            coldCodeAddrRW,
                                  void**            consAddr,
-                                 void** consAddrRW DEBUGARG(unsigned* instrCount))
+                                 void** consAddrRW MLJITARG(unsigned* instrCount))
 {
 #ifdef DEBUG
     if (emitComp->verbose)
@@ -7127,6 +7127,8 @@ unsigned emitter::emitEndCodeGen(Compiler*         comp,
 #ifdef DEBUG
     *instrCount                                       = 0;
     jitstd::list<RichIPMapping>::iterator nextMapping = emitComp->genRichIPmappings.begin();
+#elif MLJIT
+    *instrCount = 0;
 #endif
     for (insGroup* ig = emitIGlist; ig != nullptr; ig = ig->igNext)
     {
@@ -7444,6 +7446,8 @@ unsigned emitter::emitEndCodeGen(Compiler*         comp,
             printf("\t\t\t\t\t\t;; size=%d bbWeight=%s PerfScore %.2f", (cp - bp), refCntWtd2str(ig->igWeight),
                    ig->igPerfScore);
         }
+        *instrCount += ig->igInsCnt;
+#elif MLJIT
         *instrCount += ig->igInsCnt;
 #else  // DEBUG
         if (emitComp->opts.disAsm)
@@ -9547,7 +9551,7 @@ void emitter::emitInitIG(insGroup* ig)
 
     ig->igFlags = 0;
 
-#if defined(DEBUG) || defined(LATE_DISASM)
+#if defined(DEBUG) || defined(LATE_DISASM) || defined(MLJIT)
     ig->igWeight    = getCurrentBlockWeight();
     ig->igPerfScore = 0.0;
 #endif

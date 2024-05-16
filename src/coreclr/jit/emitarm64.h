@@ -37,7 +37,7 @@ const char* emitPredicateRegName(regNumber reg, PredicateType ptype);
 void emitInsSveSanityCheck(instrDesc* id);
 #endif // DEBUG
 
-#if defined(DEBUG) || defined(LATE_DISASM)
+#if defined(DEBUG) || defined(LATE_DISASM) || defined(MLJIT)
 void getInsSveExecutionCharacteristics(instrDesc* id, insExecutionCharacteristics& result);
 #endif // defined(DEBUG) || defined(LATE_DISASM)
 

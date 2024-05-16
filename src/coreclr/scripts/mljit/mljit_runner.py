@@ -9,6 +9,7 @@ import itertools
 import functools
 import mljit_metrics
 import mljit_trainer
+import mljit_utils
 
 from collections import defaultdict
 from typing import Any, List, Sequence, Tuple, Callable, Optional, Dict

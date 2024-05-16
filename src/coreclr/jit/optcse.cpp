@@ -40,7 +40,7 @@ const size_t Compiler::s_optCSEhashSizeInitial  = EXPSET_SZ * 2;
 const size_t Compiler::s_optCSEhashGrowthFactor = 2;
 const size_t Compiler::s_optCSEhashBucketSize   = 4;
 
-#if DEBUG
+#if MLJIT
 static MLJIT_CsePolicyBase* currentPolicy        = nullptr;
 static MLJIT_CsePolicyBase* currentCollectPolicy = nullptr;
 
@@ -176,7 +176,7 @@ void mljit_log_action(Compiler* compiler, int minCseCost, CSEdsc* cse, bool didC
         currentPolicy->LogAction();
     }
 }
-#endif // DEBUG
+#endif // MLJIT
 
 /*****************************************************************************
  *
@@ -5187,20 +5187,20 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         CSEdsc* const dsc     = *ptr;
         CSE_Candidate candidate(this, dsc);
 
-#ifdef DEBUG
+#ifdef MLJIT
         bool mljitEnabled = JitConfig.MLJitEnabled() == 1;
         int mltrain = JitConfig.MLJitTrain();
         if ((!mljitEnabled || (mltrain == 0)) && !dsc->IsViable())
-#else  // DEBUG
+#else  // MLJIT
         if (!dsc->IsViable())
-#endif // !DEBUG
+#endif // !MLJIT
         {
-#ifdef DEBUG
+#ifdef MLJIT
             if (mljitEnabled && (mltrain == 0))
             {
                 mljit_log_action(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), false);
             }
-#endif // DEBUG
+#endif // MLJIT
             continue;
         }
 
@@ -5228,7 +5228,7 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         }
 #endif // DEBUG
 
-#ifdef DEBUG
+#ifdef MLJIT
         bool doCSE = false;
         if (mljitEnabled && (mltrain == 2))
         {
@@ -5242,9 +5242,9 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         {
             doCSE = PromotionCheck(&candidate);
         }
-#else  // DEBUG
+#else  // MLJIT
         bool doCSE = PromotionCheck(&candidate);
-#endif // !DEBUG
+#endif // !MLJIT
 
 
 #ifdef DEBUG
@@ -5288,7 +5288,7 @@ void CSE_HeuristicCommon::ConsiderCandidates()
             madeChanges = true;
         }
 
-#ifdef DEBUG
+#ifdef MLJIT
         if (mljitEnabled && (mltrain == 0))
         {
             mljit_log_action(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), doCSE);
@@ -5581,7 +5581,7 @@ bool Compiler::optConfigDisableCSE2()
 
 void Compiler::optOptimizeCSEs()
 {
-#if DEBUG
+#if MLJIT
     // Create it once.
     static MLJIT_CsePolicyBase* policy = mljit_try_create_cse_policy();
     // Create it once.
@@ -5620,7 +5620,7 @@ void Compiler::optOptimizeCSEs()
 
     if (collectPolicy)
         collectPolicy->ResetLog();
-#endif // DEBUG
+#endif // MLJIT
 
     if (optCSEstart != BAD_VAR_NUM)
     {
@@ -5635,14 +5635,16 @@ void Compiler::optOptimizeCSEs()
     INDEBUG(optEnsureClearCSEInfo());
     optOptimizeValnumCSEs();
 
-#if DEBUG
+#if MLJIT
     int mltrain = JitConfig.MLJitTrain();
     if (collectPolicy && (mltrain == 2))
     {
         auto path = JitConfig.MLJitTrainLogFile();
         if (path)
         {
-            collectPolicy->SaveLoggedActionsAsJson(path);
+            WCHAR str[8192];
+            wsprintf(str, W("%s%d.json\0"), path, info.compMethodSuperPMIIndex);
+            collectPolicy->SaveLoggedActionsAsJson(str);
         }
     }
     else if (policy && ((mltrain == 0) || (mltrain == 1)))
@@ -5650,10 +5652,12 @@ void Compiler::optOptimizeCSEs()
         auto path = JitConfig.MLJitTrainLogFile();
         if (path)
         {
-            policy->SaveLoggedActionsAsJson(path);
+            WCHAR str[8192];
+            wsprintf(str, W("%s%d.json\0"), path, info.compMethodSuperPMIIndex);
+            policy->SaveLoggedActionsAsJson(str);
         }
     }
-#endif // DEBUG
+#endif // MLJIT
 }
 
 /*****************************************************************************

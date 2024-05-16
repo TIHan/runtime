@@ -158,11 +158,11 @@ def create_ppo_agent():
         action_spec=action_spec,
         actor_net=actor_network,
         value_net=critic_network,
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001), #epsilon=0.0003125),
-        #importance_ratio_clipping=0.2,
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
+        importance_ratio_clipping=0.2,
         lambda_value=0.0,
         discount_factor=0.0,
-        entropy_regularization=0.01,
+        entropy_regularization=0.003,
         policy_l2_reg=0.000001,
         num_epochs=1,
         value_function_l2_reg=0.0,
@@ -481,7 +481,7 @@ def filter_cse_methods(m):
 
 baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)
 
-partitioned_baseline = mljit_utils.partition(baseline, 2000)
+partitioned_baseline = mljit_utils.partition(baseline, 20000)
 
 best_state = dict()
 for x in baseline:
@@ -549,7 +549,7 @@ else:
 
     # In the beginning, force the exploration policy to be incentivised to return 'false' for CSE decisions.
     # Anecdotally, the policy trains better when it starts making 'false' decisions more than 'true' decisions.
-    agent.collect_policy.update(fixed_policy.FixedPolicy(tf.constant(0, dtype=tf.int64), agent.time_step_spec, agent.action_spec))
+   # agent.collect_policy.update(fixed_policy.FixedPolicy(tf.constant(0, dtype=tf.int64), agent.time_step_spec, agent.action_spec))
 
     jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
     jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, 
@@ -560,13 +560,13 @@ else:
     jit_runner  = mljit_runner.JitRunner(jit_trainer, 
                                          collect_data=collect_data_for_ppo, 
                                          collect_data_no_training=collect_data_no_training, 
-                                         step_size=250, 
-                                         train_sequence_length=int(16 / 2), 
-                                         batch_size=int(256 / 4), 
-                                         trajectory_shuffle_buffer_size=int(1024 / 2), 
+                                         step_size=1000, 
+                                         train_sequence_length=16,
+                                         batch_size=256, 
+                                         trajectory_shuffle_buffer_size=1024, 
                                          num_max_steps=1000000)
 
-    jit_runner.run(jit_metrics, train_data=partitioned_baseline[1][:1000], test_data=partitioned_baseline[1][:100])
+    jit_runner.run(jit_metrics, train_data=partitioned_baseline[0][:20000], test_data=partitioned_baseline[1][:1000])
 
 # ---------------------------------------
 

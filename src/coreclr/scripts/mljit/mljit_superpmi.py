@@ -8,13 +8,16 @@ import time
 import multiprocessing
 import random
 import sys
+import queue
 import concurrent.futures
 import json
+import mljit_utils
 from types import SimpleNamespace
 from dataclasses import dataclass
 from threading import Thread
 from queue import SimpleQueue
 from subprocess import PIPE
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --------------------------------------------------------------------------------
 
@@ -23,6 +26,7 @@ log_path          = os.environ['DOTNET_MLJitLogPath']
 superpmi_exe      = os.path.join(core_root, 'superpmi.exe') # TODO: Only works on windows, fix it for other OSes
 clrjit_dll        = os.path.join(core_root, 'clrjit.dll') # TODO: Only works on windows, fix it for other OSes
 mldump_txt        = os.path.join(log_path, "mldump.txt")
+mldump_data_txt        = os.path.join(log_path, "mldump_data.txt")
 
 # --------------------------------------------------------------------------------
 # Utility
@@ -35,9 +39,9 @@ def get_current_working_directory():
 def now():
     return datetime.datetime.now()
 
-def run(args, working_directory = None):
+def run(args, working_directory = None, env=None):
     start_time = now()
-    subprocess.run(args, shell = True, cwd = working_directory)
+    subprocess.run(args, shell = True, cwd = working_directory, env=env)
     return now() - start_time
 
 def regex(pattern, text, groupNum=0):
@@ -129,12 +133,13 @@ def create_superpmi_process(clrjit_dll_path, mch_path, mljit_enabled):
 
     q = SimpleQueue()
     t = Thread(target=consume_output, args=(p, q))
+    t.daemon = True
     t.start()
 
     return (p, t, q, (l, s))
 
 def create_many_superpmi_processes(clrjit_dll_path, mch_path, mljit_enabled):
-    return [create_superpmi_process(clrjit_dll_path, mch_path, mljit_enabled) for x in range(superpmi_process_count)]
+    return [create_superpmi_process(clrjit_dll_path, mch_path, mljit_enabled) for _ in range(superpmi_process_count)]
 
 # not used, but useful for getting a complete list of results from JITted functions.
 def produce_mldump_file(corpus_file_path):
@@ -226,11 +231,17 @@ def parse_mldump_line(line):
 def parse_mldump_filter(predicate, lines):
     return filter(predicate, map(parse_mldump_line, lines))
 
-def parse_mldump_file_filter(predicate):
-    dump_file = open(mldump_txt, "r")
+def parse_mldump_file_filter_aux(path, predicate):
+    dump_file = open(path, "r")
     lines = dump_file.readlines()
     dump_file.close()
     return list(parse_mldump_filter(predicate, lines))
+
+def parse_mldump_file_filter(predicate):
+    return parse_mldump_file_filter_aux(mldump_txt, predicate)
+
+def parse_mldump_data_file_filter(predicate):
+    return parse_mldump_file_filter_aux(mldump_data_txt, predicate)
 
 def parse_log_file(spmi_index, path):
     try:
@@ -246,16 +257,22 @@ def parse_log_file(spmi_index, path):
 
 def superpmi_jit(superpmi_process, spmi_index, train_kind, cse_replay_seqs):
     (p, _, q, _) = superpmi_process
-    log_file = os.path.join(log_path, f'_mljit_log_{p.pid}.json')
+    log_file = os.path.join(log_path, f'_mljit_log_  {spmi_index}.json')
+    log_file_to_pass = os.path.join(log_path, f'_mljit_log_')
     cse_replay_seqs_option = ''
     if cse_replay_seqs:
         cse_replay_seqs_option = f'!JitReplayCSE=\"{cse_replay_seqs}\"'.replace('[', '').replace(']', '')
     train_option = f'!MLJitTrain={train_kind}'
-    p.stdin.write(f'{spmi_index} !MLJitTrainLogFile={log_file} {cse_replay_seqs_option} {train_option}\n')
+    p.stdin.write(f'{spmi_index} !MLJitTrainLogFile={log_file_to_pass} {cse_replay_seqs_option} {train_option}\n')
     try:
         line = ''
         try:
             line = q.get(timeout=10) # 10 seconds
+        except queue.Empty:
+            print('[mljit] WARNING: Empty queue for SuperPMI process')
+            return None
+        except KeyboardInterrupt:
+            return None
         except Exception:
             return -1
 
@@ -294,6 +311,7 @@ def superpmi_is_busy(superpmi_process):
 def superpmi_get_next_available_process(superpmi_processes):
     results = [i for i in range(len(superpmi_processes)) if not superpmi_is_busy(superpmi_processes[i])]
     while not results:
+        print('[mljit] WARNING: Not enough SuperPMI processes')
         # This will not happen if the ThreadPoolExecutor has the same number of workers as the number of superpmi_processes.
         (_, _, _, (l, _)) = superpmi_processes[random.randrange(0, len(superpmi_processes) - 1)]
         l.wait()
@@ -340,10 +358,10 @@ def jit(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, s
 
 # --------------------------------------------------------------------------------
 # 'train_kind' correpsonds to 'DOTNET_MLJitTrain'
-def collect_data(corpus_file_path, spmi_methods, train_kind=None, verbose_log=False):
+def collect_data_old(corpus_file_path, spmi_methods, train_kind=None, verbose_log=False):
     spmi_methods = list(filter(lambda x: not (x in ignore_indices), spmi_methods))
     results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=superpmi_process_count) as executor:
+    with ThreadPoolExecutor(max_workers=superpmi_process_count) as executor:
         def create_jit_task(clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs):
             return executor.submit(jit, clrjit_dll, corpus_file_path, spmi_index, train_kind, cse_replay_seqs, superpmi_processes)
 
@@ -362,13 +380,28 @@ def collect_data(corpus_file_path, spmi_methods, train_kind=None, verbose_log=Fa
 
         tasks = list(map(lambda x: create_jit_task(clrjit_dll, corpus_file_path, x, train_kind, []), spmi_methods))
 
-        def eval(task):
-            try:
-                return task.result()
-            except Exception as error:
-                print(f"[mljit] ERROR: Unable to get result due to:\n{error}")
-                return None
-        results = list(filter(lambda x: x is not None, map(eval, tasks)))
+        eval_length = len(spmi_methods)
+        eval_count = 0
+        results = []
+        try:
+            for task in as_completed(tasks):
+                try:
+                    result = task.result()
+                    if result is not None:
+                        results = results + [result]
+                except KeyboardInterrupt:
+                    raise
+                except Exception as error:
+                    print(f"[mljit] ERROR: Unable to get result due to:\n{error}")
+                finally:
+                    eval_count = eval_count + 1
+                    mljit_utils.print_progress_bar(eval_count, eval_length)
+        except KeyboardInterrupt:
+            executor._threads.clear()
+            concurrent.futures.thread._threads_queues.clear()
+            for p in superpmi_processes:
+                superpmi_terminate(p)
+            raise
 
         if not results:
             print("[mljit] WARNING: No method results were returned. Check if SuperPMI is being invoked correctly.")
@@ -382,5 +415,61 @@ def collect_data(corpus_file_path, spmi_methods, train_kind=None, verbose_log=Fa
     if verbose_log:
         print(f'[mljit] SuperPMI finished in: {now() - time_stamp}')
         print(f'[mljit] SuperPMI result count: {len(results)}\n')
+    return results
+
+def collect_data(corpus_file_path, spmi_methods, train_kind=None, verbose_log=False):
+     # Default env vars
+    superpmi_env = dict()
+
+    # The two env vars below prevent warnings and other various verbose log messages
+    # Any errors will still be printed though.
+    superpmi_env['TF_ENABLE_ONEDNN_OPTS'] = "0"
+    superpmi_env['TF_CPP_MIN_LOG_LEVEL'] = "3"
+
+    superpmi_env['DOTNET_MLJitEnabled'] = "1"
+    superpmi_env['DOTNET_MLJitSavedPolicyPath'] = os.environ['DOTNET_MLJitSavedPolicyPath']
+    superpmi_env['DOTNET_MLJitSavedCollectPolicyPath'] = os.environ['DOTNET_MLJitSavedCollectPolicyPath']
+    superpmi_env['DOTNET_MLJitTrainLogFile'] = os.path.join(log_path, f'_mljit_log_')
+    superpmi_env['DOTNET_MLJitTrain'] = f'{train_kind}'
+
+    mcl_path = os.path.join(log_path, "ml.mcl")
+    mcl = "\n".join(map(lambda x: str(x), spmi_methods))
+
+    try:
+        os.remove(mcl_path)
+    except Exception:
+        ()
+
+    try:
+        os.remove(mldump_data_txt)
+    except Exception:
+        ()
+
+    f = open(mcl_path, "a")
+    f.write(mcl)
+    f.close()
+
+    compile_arg = f'-c {mcl_path}'
+
+    try:
+        run(f"{superpmi_exe} -v q {compile_arg} -jitoption JitStdOutFile={mldump_data_txt} -jitoption JitMetrics=1 {clrjit_dll} {corpus_file_path}", env=superpmi_env)
+    finally:
+        os.remove(mcl_path)
+
+    methods = parse_mldump_data_file_filter(lambda x: True)
+
+    results = []
+    for method in methods:
+        train_log_file_path = os.path.join(log_path, f'_mljit_log_{method.spmi_index}.json')
+        if os.path.isfile(train_log_file_path):
+            method.log = parse_log_file(method.spmi_index, train_log_file_path)
+            os.remove(train_log_file_path)
+            results.append(method)
+
+    try:
+        os.remove(mldump_data_txt)
+    except Exception:
+        ()
+
     return results
 # --------------------------------------------------------------------------------

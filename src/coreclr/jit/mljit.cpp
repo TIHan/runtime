@@ -16,7 +16,7 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 #pragma hdrstop
 #endif
 
-#ifdef DEBUG
+#ifdef MLJIT
 
 #include "mljit.h"
 
@@ -560,4 +560,4 @@ void mljit_destroy_policy(MLJIT_Policy* policy)
     delete policy;
 }
 
-#endif // DEBUG
+#endif // MLJIT

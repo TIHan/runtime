@@ -6,6 +6,7 @@
 #define _EMIT_H_
 
 #include "instr.h"
+#include "mljit.h"
 
 #ifndef _GCINFO_H_
 #include "gcinfo.h"
@@ -269,7 +270,7 @@ struct insGroup
 #ifdef DEBUG
     insGroup* igSelf; // for consistency checking
 #endif
-#if defined(DEBUG) || defined(LATE_DISASM)
+#if defined(DEBUG) || defined(LATE_DISASM) || defined(MLJIT)
     weight_t igWeight;    // the block weight used for this insGroup
     double   igPerfScore; // The PerfScore for this insGroup
 #endif
@@ -1835,7 +1836,7 @@ protected:
     void getMemoryOperation(instrDesc* id, unsigned* pMemAccessKind, bool* pIsLocalAccess);
 #endif
 
-#if defined(DEBUG) || defined(LATE_DISASM)
+#if defined(DEBUG) || defined(LATE_DISASM) || defined(MLJIT)
 
 #define PERFSCORE_THROUGHPUT_ILLEGAL -1024.0f
 
@@ -2051,7 +2052,7 @@ protected:
         insGroup*       idaLoopHeadPredIG; // The IG before the loop IG.
                                            // If no 'jmp' instructions were found until idaLoopHeadPredIG,
                                            // then idaLoopHeadPredIG == idaIG.
-#ifdef DEBUG
+#if defined(DEBUG) || defined(MLJIT)
         bool isPlacedAfterJmp; // Is the 'align' instruction placed after jmp. Used to decide
                                // if the instruction cost should be included in PerfScore
                                // calculation or not.
@@ -2600,7 +2601,7 @@ private:
     unsigned getLoopSize(insGroup*            igLoopHeader,
                          unsigned maxLoopSize DEBUG_ARG(bool isAlignAdjusted) DEBUG_ARG(UNATIVE_OFFSET containingIGNum)
                              DEBUG_ARG(UNATIVE_OFFSET loopHeadPredIGNum)); // Get the smallest loop size
-    void     emitLoopAlignment(DEBUG_ARG1(bool isPlacedBehindJmp));
+    void     emitLoopAlignment(MLJIT_ARG1(bool isPlacedBehindJmp));
     bool     emitEndsWithAlignInstr(); // Validate if newLabel is appropriate
     bool     emitSetLoopBackEdge(const BasicBlock* loopTopBlock);
     void     emitLoopAlignAdjustments(); // Predict if loop alignment is needed and make appropriate adjustments
@@ -2609,8 +2610,8 @@ private:
                                                       DEBUG_ARG(UNATIVE_OFFSET containingIGNum)
                                                           DEBUG_ARG(UNATIVE_OFFSET loopHeadPredIGNum));
 
-    void            emitLoopAlign(unsigned paddingBytes, bool isFirstAlign DEBUG_ARG(bool isPlacedBehindJmp));
-    void            emitLongLoopAlign(unsigned alignmentBoundary DEBUG_ARG(bool isPlacedBehindJmp));
+    void            emitLoopAlign(unsigned paddingBytes, bool isFirstAlign MLJIT_ARG(bool isPlacedBehindJmp));
+    void            emitLongLoopAlign(unsigned alignmentBoundary MLJIT_ARG(bool isPlacedBehindJmp));
     instrDescAlign* emitAlignInNextIG(instrDescAlign* alignInstr);
     void            emitConnectAlignInstrWithCurIG();
 

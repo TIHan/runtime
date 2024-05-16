@@ -4,7 +4,19 @@
 #ifndef _MLJIT_H
 #define _MLJIT_H
 
-#ifdef DEBUG
+#define MLJIT 1
+
+#ifdef MLJIT
+#define MLJIT_ARG(x)  , x
+#define MLJIT_ARG1(x) x
+#define MLJITARG(x)   , x
+#else
+#define MLJIT_ARG(x) DEBUG_ARG(x)
+#define MLJIT_ARG1(x) DEBUG_ARG1(x)
+#define MLJITARG      DEBUGARG(x)
+#endif
+
+#ifdef MLJIT
 
 #include "tensorflow\c\c_api.h"
 #include "compiler.h"
@@ -306,6 +318,6 @@ MLJIT_CsePolicyBase* mljit_try_create_cse_policy();
 MLJIT_CsePolicyBase* mljit_try_create_cse_collect_policy();
 void mljit_destroy_policy(MLJIT_Policy* mljitSession);
 
-#endif // DEBUG
+#endif // MLJIT
 
 #endif // _MLJIT_H

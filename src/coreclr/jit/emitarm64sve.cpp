@@ -16318,7 +16318,7 @@ void emitter::emitDispInsSveHelp(instrDesc* id)
     }
 }
 
-#if defined(DEBUG) || defined(LATE_DISASM)
+#if defined(DEBUG) || defined(LATE_DISASM) || defined(MLJIT)
 //----------------------------------------------------------------------------------------
 // getInsSveExecutionCharacteristics:
 //    Returns the current SVE instruction's execution characteristics
