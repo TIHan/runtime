@@ -516,7 +516,6 @@ def parse_for_ppo(x):
 def collect_data_for_ppo(x):
     return collect_data(corpus_file_path, x, train_kind=2)
 
-# TODO: Make this part of the command line args.
 build_warmstart = False
 use_warmstart = False
 

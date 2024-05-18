@@ -222,7 +222,7 @@ def cleanup_logs():
         ()
 
 # --------------------------------------------------------------------------------
-def collect_data(corpus_file_path, spmi_methods=None, train_kind=0, parallel=True, verbose_log=False):
+def collect_data(corpus_file_path, spmi_methods=None, train_kind=0, verbose_log=False):
     if spmi_methods is not None:
         spmi_methods = list(filter(lambda x: not (x in ignore_indices), spmi_methods))
 
@@ -244,6 +244,9 @@ def collect_data(corpus_file_path, spmi_methods=None, train_kind=0, parallel=Tru
     superpmi_env['DOTNET_MLJitTrain'] = f'{train_kind}'
 
     cleanup_logs()
+
+    # Parallelism is only available when a compile list is not specified.
+    parallel = spmi_methods is None
 
     verbose_arg = '-v q'
     if verbose_log:
