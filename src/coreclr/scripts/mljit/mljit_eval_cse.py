@@ -3,8 +3,12 @@ import mljit_superpmi
 
 corpus_file_path = os.environ['DOTNET_MLJitCorpusFile']
 
-baseline_methods = mljit_superpmi.collect_all_data(corpus_file_path, train_kind=0, parallel=False, verbose_log=True)
-policy_methods = mljit_superpmi.collect_all_data(corpus_file_path, train_kind=1, parallel=False, verbose_log=True)
+print('[mljit] Collecting baseline methods...')
+baseline_methods = mljit_superpmi.collect_data(corpus_file_path, train_kind=0)
+print('[mljit] Collecting policy methods...')
+policy_methods = mljit_superpmi.collect_data(corpus_file_path, train_kind=1)
+
+print('[mljit] Comparing baseline and policy methods...')
 
 num_improvements = 0
 num_regressions = 0
