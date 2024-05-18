@@ -76,7 +76,6 @@ if superpmi_process_count == 0:
 
 @dataclass
 class Method:
-    is_valid: bool
     perf_score: float
     num_cse_usages: int
     num_cse_candidates: int
@@ -149,12 +148,12 @@ def mldump_file_exists():
     return os.path.isfile(mldump_txt)
 
 def parse_mldump_line(line):
-    perf_score_pattern        = regex('(PerfScore|perf score) (\d+(\.\d+)?)', line, 2)
-    num_cse_usagesPattern     = regex('num cse ([0-9]{1,})', line, 1)
-    num_cse_candidatesPattern = regex('num cand ([0-9]{1,})', line, 1)
-    cse_seq_pattern           = regex('seq ([0-9,]*)', line, 1)
-    spmi_index_pattern        = regex('spmi index ([0-9]{1,})', line, 1)
-    code_size_pattern         = regex('Total bytes of code ([0-9]{1,})', line, 1)
+    perf_score_pattern         = regex('(PerfScore|perf score) (\d+(\.\d+)?)', line, 2)
+    num_cse_usages_pattern     = regex('num cse ([0-9]{1,})', line, 1)
+    num_cse_candidates_pattern = regex('num cand ([0-9]{1,})', line, 1)
+    cse_seq_pattern            = regex('seq ([0-9,]*)', line, 1)
+    spmi_index_pattern         = regex('spmi index ([0-9]{1,})', line, 1)
+    code_size_pattern          = regex('Total bytes of code ([0-9]{1,})', line, 1)
 
     is_valid = True
 
@@ -167,10 +166,10 @@ def parse_mldump_line(line):
         try:
             perf_score = float(perf_score_pattern)
         except Exception:
-            #print(f'There was an error when parsing the \'perf_score\' from the JIT output: {perf_score_pattern}')
+            print(f'[mljit] ERROR: There was an error when parsing the \'perf_score\' from the JIT output: {perf_score_pattern}')
             is_valid = False
     else:
-        #print(f'\'(PerfScore|perf score)\' does not exist.')
+        print(f'[mljit] ERROR: \'(PerfScore|perf score)\' does not exist.')
         is_valid = False
 
     code_size = 10000000000.0
@@ -178,62 +177,69 @@ def parse_mldump_line(line):
         try:
             code_size = float(code_size_pattern)
         except Exception:
-            #print(f'There was an error when parsing the \'Total bytes of code\' from the JIT output: {code_size_pattern}')
+            print(f'[mljit] ERROR: There was an error when parsing the \'Total bytes of code\' from the JIT output: {code_size_pattern}')
             is_valid = False
     else:
-        #print(f'\'Total bytes of code\' does not exist.')
+        print(f'[mljit] ERROR: \'Total bytes of code\' does not exist.')
         is_valid = False
 
     num_cse_usages = 0
-    if num_cse_usagesPattern:
+    if num_cse_usages_pattern:
         try:
-            num_cse_usages = int(num_cse_usagesPattern)
+            num_cse_usages = int(num_cse_usages_pattern)
         except Exception:
-            #print(f'There was an error when parsing the \'num cse\' from the JIT output: {num_cse_usages_pattern}')
+            print(f'[mljit] ERROR: There was an error when parsing the \'num cse\' from the JIT output: {num_cse_usages_pattern}')
             is_valid = False
     else:
-        #print(f'\'num cse\' does not exist.')
+        print(f'[mljit] ERROR: \'num cse\' does not exist.')
         is_valid = False
 
     num_cse_candidates = 0
-    if num_cse_candidatesPattern:
+    if num_cse_candidates_pattern:
         try:
-            num_cse_candidates = int(num_cse_candidatesPattern)
+            num_cse_candidates = int(num_cse_candidates_pattern)
         except Exception:
-            #print(f'There was an error when parsing the \'num cand\' from the JIT output: {num_cse_candidates_pattern}')
+            print(f'[mljit] ERROR: There was an error when parsing the \'num cand\' from the JIT output: {num_cse_candidates_pattern}')
             is_valid = False
     else:
-        #print(f'\'num cand\' does not exist.')
+        print(f'[mljit] ERROR: \'num cand\' does not exist.')
         is_valid = False
 
     spmi_index = -1
-    if num_cse_usagesPattern:
+    if num_cse_usages_pattern:
         try:
             spmi_index = int(spmi_index_pattern)
         except Exception:
-            #print(f'There was an error when parsing the \'spmi index\' from the JIT output: {spmi_index_pattern}')
+            print(f'[mljit] ERROR: There was an error when parsing the \'spmi index\' from the JIT output: {spmi_index_pattern}')
             is_valid = False
     else:
-        #print(f'\'spmi index\' does not exist.')
+        print(f'[mljit] ERROR: \'spmi index\' does not exist.')
         is_valid = False
 
-    return Method(
-            is_valid,
-            perf_score,
-            num_cse_usages,
-            num_cse_candidates,
-            cse_seq,
-            spmi_index,
-            code_size,
-            []
-        )
+    if is_valid:
+        return Method(
+                perf_score,
+                num_cse_usages,
+                num_cse_candidates,
+                cse_seq,
+                spmi_index,
+                code_size,
+                []
+            )
+    else:
+        return None
 
 def parse_mldump_filter(predicate, lines):
-    return filter(predicate, map(parse_mldump_line, lines))
+    def filter_(x):
+        if x is None:
+            return False
+        else:
+            return predicate(x)
+    return filter(filter_, map(parse_mldump_line, lines))
 
 def parse_mldump_file_filter_aux(path, predicate):
     dump_file = open(path, "r")
-    lines = dump_file.readlines()
+    lines = list(filter(lambda x: x.startswith('; Total bytes of code'), dump_file.readlines()))
     dump_file.close()
     return list(parse_mldump_filter(predicate, lines))
 
@@ -417,8 +423,9 @@ def collect_data_old(corpus_file_path, spmi_methods, train_kind=None, verbose_lo
         print(f'[mljit] SuperPMI result count: {len(results)}\n')
     return results
 
-def collect_data(corpus_file_path, spmi_methods, train_kind=None, verbose_log=False):
-     # Default env vars
+# --------------------------------------------------------------------------------
+def collect_all_data(corpus_file_path, train_kind=0, parallel=False, verbose_log=False):
+    # Default env vars
     superpmi_env = dict()
 
     # The two env vars below prevent warnings and other various verbose log messages
@@ -432,31 +439,27 @@ def collect_data(corpus_file_path, spmi_methods, train_kind=None, verbose_log=Fa
     superpmi_env['DOTNET_MLJitTrainLogFile'] = os.path.join(log_path, f'_mljit_log_')
     superpmi_env['DOTNET_MLJitTrain'] = f'{train_kind}'
 
-    mcl_path = os.path.join(log_path, "ml.mcl")
-    mcl = "\n".join(map(lambda x: str(x), spmi_methods))
-
-    try:
-        os.remove(mcl_path)
-    except Exception:
-        ()
-
     try:
         os.remove(mldump_data_txt)
     except Exception:
         ()
 
-    f = open(mcl_path, "a")
-    f.write(mcl)
-    f.close()
+    verbose_arg = '-v q'
+    if verbose_log:
+        verbose_arg = ''
 
-    compile_arg = f'-c {mcl_path}'
+    parallel_arg = ''
+    if parallel:
+        parallel_arg = '-p'
 
-    try:
-        run(f"{superpmi_exe} -v q {compile_arg} -jitoption JitStdOutFile={mldump_data_txt} -jitoption JitMetrics=1 {clrjit_dll} {corpus_file_path}", env=superpmi_env)
-    finally:
-        os.remove(mcl_path)
+    run(f"{superpmi_exe} {parallel_arg} {verbose_arg} -jitoption JitStdOutFile={mldump_data_txt} -jitoption JitMetrics=1 {clrjit_dll} {corpus_file_path}", env=superpmi_env)
 
     methods = parse_mldump_data_file_filter(lambda x: True)
+
+    try:
+        os.remove(mldump_data_txt)
+    except Exception:
+        ()
 
     results = []
     for method in methods:
@@ -464,12 +467,81 @@ def collect_data(corpus_file_path, spmi_methods, train_kind=None, verbose_log=Fa
         if os.path.isfile(train_log_file_path):
             method.log = parse_log_file(method.spmi_index, train_log_file_path)
             os.remove(train_log_file_path)
-            results.append(method)
+            if method.log:
+                results.append(method)
+
+    return results
+
+# --------------------------------------------------------------------------------
+def collect_data(corpus_file_path, spmi_methods, train_kind=0, verbose_log=False):
+     # Default env vars
+    superpmi_env = dict()
+
+    spmi_methods = list(filter(lambda x: not (x in ignore_indices), spmi_methods))
+    # The two env vars below prevent warnings and other various verbose log messages
+    # Any errors will still be printed though.
+    superpmi_env['TF_ENABLE_ONEDNN_OPTS'] = "0"
+    superpmi_env['TF_CPP_MIN_LOG_LEVEL'] = "3"
+
+    superpmi_env['DOTNET_MLJitEnabled'] = "1"
+    superpmi_env['DOTNET_MLJitSavedPolicyPath'] = os.environ['DOTNET_MLJitSavedPolicyPath']
+    superpmi_env['DOTNET_MLJitSavedCollectPolicyPath'] = os.environ['DOTNET_MLJitSavedCollectPolicyPath']
+    superpmi_env['DOTNET_MLJitTrainLogFile'] = os.path.join(log_path, f'_mljit_log_')
+    superpmi_env['DOTNET_MLJitTrain'] = f'{train_kind}'
+
+    mcl_path = os.path.join(log_path, "mljit.mcl")
+    mcl = "\n".join(map(lambda x: str(x), spmi_methods))
 
     try:
         os.remove(mldump_data_txt)
     except Exception:
         ()
+
+    f = open(mcl_path, "w")
+    f.write(mcl)
+    f.close()
+
+    compile_arg = f'-c {mcl_path}'
+
+    verbose_arg = '-v q'
+    if verbose_log:
+        verbose_arg = ''
+
+    run(f"{superpmi_exe} {verbose_arg} {compile_arg} -jitoption JitStdOutFile={mldump_data_txt} -jitoption JitMetrics=1 {clrjit_dll} {corpus_file_path}", env=superpmi_env)
+
+    methods = parse_mldump_data_file_filter(lambda x: True)
+
+    try:
+        os.remove(mldump_data_txt)
+    except Exception:
+        ()
+
+    results = []
+    for method in methods:
+        train_log_file_path = os.path.join(log_path, f'_mljit_log_{method.spmi_index}.json')
+        if os.path.isfile(train_log_file_path):
+            method.log = parse_log_file(method.spmi_index, train_log_file_path)
+            os.remove(train_log_file_path)
+
+            # Log could be empty, so do not include this in the results.
+            # As an example: this can mean that all the CSE candidates were not viable; the policy should not look at non-viable candidates.
+            if method.log:
+                results.append(method)
+            else:
+                print(f'[mljit] WARNING: spmi_index \'{method.spmi_index}\' log was empty. Ignoring it for future collections.')
+                ignore_indices.add(method.spmi_index)
+        else:
+            print(f'[mljit] WARNING: spmi_index \'{method.spmi_index}\' did not have a log. Ignoring it for future collections.')
+            ignore_indices.add(method.spmi_index)
+
+    for spmi_method in spmi_methods:
+        was_found = False
+        for method in methods:
+            if method.spmi_index == spmi_method:
+                was_found = True
+        if not was_found:
+            print(f'[mljit] WARNING: spmi_index \'{spmi_method}\' was not found in the results, likely due to a SuperPMI or JIT error. Ignoring it for future collections.')
+            ignore_indices.add(spmi_method)
 
     return results
 # --------------------------------------------------------------------------------

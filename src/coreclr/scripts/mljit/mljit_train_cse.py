@@ -116,20 +116,29 @@ action_spec = tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_
 
 preprocessing_combiner = tf.keras.layers.Concatenate()
 
-def create_bc_agent():
-    network = q_network.QNetwork(
-        input_tensor_spec=time_step_spec.observation,
-        action_spec=action_spec,
-        preprocessing_layers=preprocessing_layers,
-        preprocessing_combiner=preprocessing_combiner,
-        fc_layer_params=(40, 40, 20),
-        dropout_layer_params=(0.2, 0.2, 0.2))
+def create_bc_agent(use_actor_network=False):
+    if use_actor_network:
+        network = actor_distribution_network.ActorDistributionNetwork(
+            input_tensor_spec=time_step_spec.observation,
+            output_tensor_spec=action_spec,
+            preprocessing_layers=preprocessing_layers,
+            preprocessing_combiner=preprocessing_combiner,
+            fc_layer_params=(40, 40, 20),
+            dropout_layer_params=(0.2, 0.2, 0.2))
+    else:
+        network = q_network.QNetwork(
+            input_tensor_spec=time_step_spec.observation,
+            action_spec=action_spec,
+            preprocessing_layers=preprocessing_layers,
+            preprocessing_combiner=preprocessing_combiner,
+            fc_layer_params=(40, 40, 20),
+            dropout_layer_params=(0.2, 0.2, 0.2))
 
     agent = behavioral_cloning_agent.BehavioralCloningAgent(
         time_step_spec=time_step_spec,
         action_spec=action_spec,
         cloning_network=network,
-        optimizer=tf.keras.optimizers.Adam(),
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001, epsilon=0.0003125),
         num_outer_dims=2,
         debug_summaries=True,
         summarize_grads_and_vars=True)
@@ -138,7 +147,7 @@ def create_bc_agent():
     agent.train = common_utils.function(agent.train) # Apparently, it makes 'train' faster? Who knows why...
     return agent
 
-def create_ppo_agent():
+def create_ppo_agent(use_real_critic=False):
     actor_network = actor_distribution_network.ActorDistributionNetwork(
         input_tensor_spec=time_step_spec.observation,
         output_tensor_spec=action_spec,
@@ -146,31 +155,55 @@ def create_ppo_agent():
         preprocessing_combiner=preprocessing_combiner,
         fc_layer_params=(40, 40, 20))
 
-    # critic_network = value_network.ValueNetwork(
-    #   time_step_spec.observation,
-    #   preprocessing_layers=preprocessing_layers,
-    #   preprocessing_combiner=preprocessing_combiner)
+    learning_rate             = 0.001#0.00003
+    epsilon                   = 0.0003125
+    entropy_regularization    = 0.01
+    importance_ratio_clipping = 0.2
+    policy_l2_reg             = 0.000001
 
-    critic_network = mljit_tf.ConstantValueNetwork(time_step_spec.observation)
+    if use_real_critic:
+        critic_network = value_network.ValueNetwork(
+            time_step_spec.observation,
+            preprocessing_layers=preprocessing_layers,
+            preprocessing_combiner=preprocessing_combiner)
 
-    agent = ppo_agent.PPOAgent(
-        time_step_spec=time_step_spec,
-        action_spec=action_spec,
-        actor_net=actor_network,
-        value_net=critic_network,
-        optimizer=tf.keras.optimizers.Adam(learning_rate=0.00003, epsilon=0.0003125),
-        importance_ratio_clipping=0.2,
-        lambda_value=0.0,
-        discount_factor=0.0,
-        entropy_regularization=0.003,
-        policy_l2_reg=0.000001,
-        num_epochs=1,
-        value_function_l2_reg=0.0,
-        value_pred_loss_coef=0.0,
-        normalize_observations=False,
-        normalize_rewards=False,
-        debug_summaries=True,
-        summarize_grads_and_vars=True)
+        agent = ppo_agent.PPOAgent(
+            time_step_spec=time_step_spec,
+            action_spec=action_spec,
+            actor_net=actor_network,
+            value_net=critic_network,
+            optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate, epsilon=epsilon),
+            importance_ratio_clipping=importance_ratio_clipping,
+            entropy_regularization=entropy_regularization,
+            policy_l2_reg=policy_l2_reg,
+            num_epochs=1,
+            normalize_observations=False,
+            normalize_rewards=False,
+            debug_summaries=True,
+            summarize_grads_and_vars=True)
+    else:
+        critic_network = mljit_tf.ConstantValueNetwork(time_step_spec.observation)
+
+        agent = ppo_agent.PPOAgent(
+            time_step_spec=time_step_spec,
+            action_spec=action_spec,
+            actor_net=actor_network,
+            value_net=critic_network,
+            optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate, epsilon=epsilon),
+            importance_ratio_clipping=importance_ratio_clipping,
+            entropy_regularization=entropy_regularization,
+            policy_l2_reg=policy_l2_reg,
+            num_epochs=1,
+            normalize_observations=False,
+            normalize_rewards=False,
+            debug_summaries=True,
+            summarize_grads_and_vars=True,
+
+            # This is needed for the constant value network.
+            value_function_l2_reg=0.0,
+            value_pred_loss_coef=0.0,
+            lambda_value=0.0,
+            discount_factor=0.0)
 
     agent.initialize()
     agent.train = common_utils.function(agent.train) # Apparently, it makes 'train' faster? Who knows why...
@@ -419,47 +452,24 @@ def parse(serialized_proto, use_behavioral_cloning):
 
 # ---------------------------------------
 
-def collect_data(corpus_file_path, baseline, best_state, train_kind):
-    indices = mljit_utils.flatten(list(map(lambda x: [x.spmi_index], baseline)))
+def collect_data(corpus_file_path, baseline, train_kind):
+    if baseline is None:
+        return []
+    else:
+        data = mljit_superpmi.collect_data(corpus_file_path, list(map(lambda x: x.spmi_index, baseline)), train_kind=train_kind)
 
-    data = mljit_superpmi.collect_data(corpus_file_path, indices, train_kind=train_kind)
-    for item_base in baseline:
-        spmi_index = item_base.spmi_index
-        item_best = best_state[spmi_index]
-        for item in data:
-            if item.spmi_index == spmi_index:
+        # Calculate and update rewards.
+        # Only do this for exploration.
+        if train_kind == 2:
+            for item_base in baseline:
+                spmi_index = item_base.spmi_index
+                for item in data:
+                    if item.spmi_index == spmi_index:
+                        reward = (1.0 - (item.perf_score / item_base.perf_score))
+                        for log_item in item.log:
+                            log_item.reward = reward
 
-                # Reward Method 1
-                # reward = (item_best.perf_score - item.perf_score) / item_base.perf_score
-
-                # Reward Method 2
-                reward = (1.0 - (item.perf_score / item_base.perf_score))
-
-                # Reward Method 3
-                # if item.perf_score < item_base.perf_score:
-                #     reward = 1.0
-                # elif item.perf_score > item_base.perf_score:
-                #     reward = -1.0
-                # else:
-                #     reward = 0.0
-
-                # Clamp
-                # if reward > 1.0:
-                #     reward = 1.0
-                # elif reward < -1.0:
-                #     reward = -1.0
-
-                for log_item in item.log:
-                    log_item.reward = reward
-
-                if item.perf_score < item_best.perf_score:
-                    item_best = item
-                elif item.perf_score == item_best.perf_score and item.num_cse_usages < item_best.num_cse_usages:
-                    item_best = item
-
-        best_state[spmi_index] = item_best
-
-    return data
+        return data
 
 def create_trajectories(data: Sequence[Any], use_behavioral_cloning):    
     acc = []
@@ -477,22 +487,16 @@ if not mljit_superpmi.mldump_file_exists():
     print('[mljit] Finished producing mldump.txt')
 
 def filter_cse_methods(m):
-    return m.is_valid and m.num_cse_candidates > 0 and m.perf_score > 0
+    return m.num_cse_candidates > 0 and m.perf_score > 0
 
 baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)
-
-partitioned_baseline = mljit_utils.partition(baseline, 20000)
-
-best_state = dict()
-for x in baseline:
-    best_state[x.spmi_index] = x
 
 # ---------------------------------------
 
 # Training
 
 def collect_data_no_training(x):
-    return collect_data(corpus_file_path, x, best_state, train_kind=1)
+    return collect_data(corpus_file_path, x, train_kind=1)
 
 def create_trajectories_for_bc(x):
     return create_trajectories(x, use_behavioral_cloning=True)
@@ -501,7 +505,7 @@ def parse_for_bc(x):
     return parse(x, use_behavioral_cloning=True)
 
 def collect_data_for_bc(x):
-    return collect_data(corpus_file_path, x, best_state, train_kind=0)
+    return collect_data(corpus_file_path, x, train_kind=0)
 
 def create_trajectories_for_ppo(x):
     return create_trajectories(x, use_behavioral_cloning=False)
@@ -510,7 +514,7 @@ def parse_for_ppo(x):
     return parse(x, use_behavioral_cloning=False)
 
 def collect_data_for_ppo(x):
-    return collect_data(corpus_file_path, x, best_state, train_kind=2)
+    return collect_data(corpus_file_path, x, train_kind=2)
 
 # TODO: Make this part of the command line args.
 build_warmstart = False
@@ -519,7 +523,7 @@ use_warmstart = False
 if build_warmstart:
     # BC Training
 
-    agent = create_bc_agent()
+    agent = create_bc_agent(use_actor_network=True)
 
     jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
     jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, 
@@ -530,26 +534,26 @@ if build_warmstart:
     jit_runner  = mljit_runner.JitRunner(jit_trainer, 
                                          collect_data=collect_data_for_bc, 
                                          collect_data_no_training=collect_data_no_training, 
-                                         step_size=100000, 
+                                         step_size=1000000, 
                                          train_sequence_length=1, 
                                          batch_size=64, 
                                          trajectory_shuffle_buffer_size=1024, 
-                                         num_max_steps=500000)
+                                         num_max_steps=1000000)
 
-    jit_runner.run(jit_metrics, train_data=partitioned_baseline[0], test_data=partitioned_baseline[0][:200])
+    jit_runner.run(jit_metrics, train_data=baseline, test_data=[])
 
     mljit_trainer.save_policy(jit_trainer.policy_saver, warmstart_policy_path)
 else:
     # PPO Training
 
-    agent = create_ppo_agent()
+    agent = create_ppo_agent(use_real_critic=True)
 
     if use_warmstart:
         agent.policy.update(policy_loader.load(warmstart_policy_path))
-
-    # In the beginning, force the exploration policy to be incentivised to return 'false' for CSE decisions.
-    # Anecdotally, the policy trains better when it starts making 'false' decisions more than 'true' decisions.
-   # agent.collect_policy.update(fixed_policy.FixedPolicy(tf.constant(0, dtype=tf.int64), agent.time_step_spec, agent.action_spec))
+    #else:
+        # In the beginning, force the policy to be incentivised to return 'false' for CSE decisions.
+        # Anecdotally, the policy trains better when it starts making 'false' decisions more than 'true' decisions.
+        # agent.collect_policy.update(fixed_policy.FixedPolicy(tf.constant(0, dtype=tf.int64), agent.time_step_spec, agent.action_spec))
 
     jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
     jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, 
@@ -566,7 +570,8 @@ else:
                                          trajectory_shuffle_buffer_size=1024, 
                                          num_max_steps=1000000)
 
-    jit_runner.run(jit_metrics, train_data=partitioned_baseline[0][:20000], test_data=partitioned_baseline[1][:1000])
+    partitioned_baseline = mljit_utils.partition(baseline, 10000)
+    jit_runner.run(jit_metrics, train_data=partitioned_baseline[0][:10000], test_data=partitioned_baseline[1][:1000])
 
 # ---------------------------------------
 

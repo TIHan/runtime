@@ -71,7 +71,11 @@ class JitTrainer:
         dataset = create_dataset(self.parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)
 
         jit_metrics.reset()
-        with tf.summary.record_if(lambda: tf.math.equal(self.step % 1000, 0)):
+
+        summary_interval = min(step_size, 1000)
+        summary_interval = max(summary_interval, 250)
+
+        with tf.summary.record_if(lambda: tf.math.equal(self.step % summary_interval, 0)):
             print('[mljit] Training...')
             dataset_iter = create_dataset_iter(dataset)
             count = 0

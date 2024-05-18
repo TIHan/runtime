@@ -5187,20 +5187,8 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         CSEdsc* const dsc     = *ptr;
         CSE_Candidate candidate(this, dsc);
 
-#ifdef MLJIT
-        bool mljitEnabled = JitConfig.MLJitEnabled() == 1;
-        int mltrain = JitConfig.MLJitTrain();
-        if ((!mljitEnabled || (mltrain == 0)) && !dsc->IsViable())
-#else  // MLJIT
         if (!dsc->IsViable())
-#endif // !MLJIT
         {
-#ifdef MLJIT
-            if (mljitEnabled && (mltrain == 0))
-            {
-                mljit_log_action(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), false);
-            }
-#endif // MLJIT
             continue;
         }
 
@@ -5229,7 +5217,9 @@ void CSE_HeuristicCommon::ConsiderCandidates()
 #endif // DEBUG
 
 #ifdef MLJIT
-        bool doCSE = false;
+        bool mljitEnabled = JitConfig.MLJitEnabled() == 1;
+        int  mltrain      = JitConfig.MLJitTrain();
+        bool doCSE        = false;
         if (mljitEnabled && (mltrain == 2))
         {
             doCSE = mljit_run_collect_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
@@ -5237,6 +5227,11 @@ void CSE_HeuristicCommon::ConsiderCandidates()
         else if (mljitEnabled && (mltrain == 1))
         {
             doCSE = mljit_run_policy(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc());
+        }
+        else if (mljitEnabled && (mltrain == 0))
+        {
+            doCSE = PromotionCheck(&candidate);
+            mljit_log_action(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), doCSE);
         }
         else
         {

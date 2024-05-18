@@ -64,8 +64,8 @@ class JitRunner:
             improvement_score = 0
             regression_score = 0
 
-            for base in test_data:
-                for curr in test_methods:
+            for curr in test_methods:
+                for base in test_data:
                     if base.spmi_index == curr.spmi_index:
                         if curr.perf_score < base.perf_score:
                             num_improvements = num_improvements + 1

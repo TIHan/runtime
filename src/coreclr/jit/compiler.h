@@ -10224,9 +10224,7 @@ public:
         const char* compFullName;
         int         compMethodSuperPMIIndex; // useful when debugging under SuperPMI
 
-#endif // defined(DEBUG) || defined(LATE_DISASM) || DUMP_FLOWGRAPHS
-
-#if defined(MLJIT)
+#elif defined(MLJIT) // defined(DEBUG) || defined(LATE_DISASM) || DUMP_FLOWGRAPHS
         int compMethodSuperPMIIndex; // useful when debugging under SuperPMI
 #endif // defined(MLJIT)
 

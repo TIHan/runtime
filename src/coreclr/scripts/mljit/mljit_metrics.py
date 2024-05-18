@@ -59,7 +59,6 @@ class JitTensorBoardMetrics:
     def __init__(self, path):
         train_summary_writer = tf.summary.create_file_writer(path, flush_millis=10000)
         train_summary_writer.set_as_default()
-        summary_log_interval = 100
 
         data_action_mean = tf.keras.metrics.Mean()
         data_reward_mean = tf.keras.metrics.Mean()
@@ -70,7 +69,6 @@ class JitTensorBoardMetrics:
         regression_score = tf.keras.metrics.Sum()
 
         self.train_summary_writer = train_summary_writer
-        self.summary_log_interval = summary_log_interval
         self.data_action_mean = data_action_mean
         self.data_reward_mean = data_reward_mean
         self.num_trajectories = num_trajectories
@@ -87,11 +85,10 @@ class JitTensorBoardMetrics:
         self.regression_score.reset_states()
 
     def update_improvements_and_regressions(self, num_improvements, num_regressions, improvement_score, regression_score, step):
-        if tf.math.equal(step % self.summary_log_interval, 0):
-            self.num_improvements.update_state(num_improvements)
-            self.num_regressions.update_state(num_regressions)
-            self.improvement_score.update_state(improvement_score)
-            self.regression_score.update_state(regression_score)
+        self.num_improvements.update_state(num_improvements)
+        self.num_regressions.update_state(num_regressions)
+        self.improvement_score.update_state(improvement_score)
+        self.regression_score.update_state(regression_score)
 
         if tf.summary.should_record_summaries():
             with tf.name_scope('jit/'):
@@ -113,19 +110,14 @@ class JitTensorBoardMetrics:
                     step=step)
 
     def update(self, data: Sequence[Any], experience, step):
-        """Updates metrics and exports to Tensorboard."""
-        if tf.math.equal(step % self.summary_log_interval, 0):
-            is_action = ~experience.is_boundary()
+        is_action = ~experience.is_boundary()
 
-            self.data_action_mean.update_state(
-                experience.action, sample_weight=is_action)
-            self.data_reward_mean.update_state(
-                experience.reward, sample_weight=is_action)
-            self.num_trajectories.update_state(experience.is_first())
+        self.data_action_mean.update_state(
+            experience.action, sample_weight=is_action)
+        self.data_reward_mean.update_state(
+            experience.reward, sample_weight=is_action)
+        self.num_trajectories.update_state(experience.is_first())
 
-        # Check earlier rather than later if we should record summaries.
-        # TF also checks it, but much later. Needed to avoid looping through
-        # the dict so gave the if a bigger scope
         if tf.summary.should_record_summaries():
             with tf.name_scope('default/'):
                 tf.summary.scalar(
