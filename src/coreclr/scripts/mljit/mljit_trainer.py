@@ -99,7 +99,8 @@ class JitTrainer:
                 datasets = datasets + [create_dataset(self.parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)]
 
             print(f'[mljit] Dataset cardinality: {dataset.cardinality()}')
-            dataset = mljit_utils.functools.reduce(lambda x, y: x.concatenate(y), datasets).shuffle(dataset.cardinality(), reshuffle_each_iteration=True)
+            dataset = mljit_utils.functools.reduce(lambda x, y: x.concatenate(y), datasets)
+            dataset = dataset.shuffle(dataset.cardinality(), reshuffle_each_iteration=True)
         else:
             sequence_examples = self.create_trajectories(data)
             dataset = create_dataset(self.parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)
