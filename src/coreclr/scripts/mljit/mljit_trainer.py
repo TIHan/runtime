@@ -9,6 +9,7 @@ import itertools
 import functools
 import mljit_metrics
 import mljit_utils
+import mljit_superpmi
 
 from collections import defaultdict
 from typing import Any, List, Sequence, Tuple, Callable, Optional, Dict
@@ -30,6 +31,7 @@ from tf_agents.environments import tf_environment
 from tf_agents import specs
 from tf_agents.utils import common
 from absl import logging
+from dataclasses import dataclass
 
 def create_policy_saver(agent):
     return PolicySaver(agent.policy, batch_size=1, use_nest_path_signatures=False)
@@ -51,6 +53,12 @@ def create_dataset(parse, sequence_examples, train_sequence_length, batch_size, 
 def create_dataset_iter(dataset):
     return iter(dataset.repeat().prefetch(tf.data.AUTOTUNE))
 
+@dataclass
+class JitTrainSettings:
+    train_sequence_length: int
+    batch_size: int
+    trajectory_shuffle_buffer_size: int
+
 class JitTrainer:
     def __init__(self, saved_policy_path, saved_collect_policy_path, agent, create_trajectories, parse):
         self.agent = agent
@@ -66,9 +74,34 @@ class JitTrainer:
         save_policy(self.policy_saver, self.saved_policy_path)
         save_policy(self.collect_policy_saver, self.saved_collect_policy_path)
 
-    def train(self, jit_metrics: mljit_metrics.JitTensorBoardMetrics, data, step_size, train_sequence_length, batch_size, trajectory_shuffle_buffer_size):
-        sequence_examples = self.create_trajectories(data)
-        dataset = create_dataset(self.parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)
+    def train(self, jit_metrics: mljit_metrics.JitTensorBoardMetrics, data: Sequence[mljit_superpmi.Method], step_size, train_settings: Optional[JitTrainSettings]=None):
+
+        if train_settings is None:
+            lookup = defaultdict(list)
+            for x in data:
+                lookup[len(x.log)].append(x)
+
+            datasets = []
+            for k, v in lookup.items():
+
+                train_sequence_length = k
+                batch_size = len(v)
+                trajectory_shuffle_buffer_size = k * 64
+
+                if k == 1:
+                    train_sequence_length = 2
+                    batch_size = int(len(v) / 2)
+                    if batch_size < 1:
+                        batch_size = 1
+                    trajectory_shuffle_buffer_size = 128
+
+                sequence_examples = self.create_trajectories(v)
+                datasets = datasets + [create_dataset(self.parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)]
+
+            dataset = mljit_utils.functools.reduce(lambda x, y: x.concatenate(y), datasets)
+        else:
+            sequence_examples = self.create_trajectories(data)
+            dataset = create_dataset(self.parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)
 
         jit_metrics.reset()
 

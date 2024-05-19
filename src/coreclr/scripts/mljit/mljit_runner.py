@@ -33,14 +33,12 @@ from tf_agents.utils import common
 from absl import logging
 
 class JitRunner:
-    def __init__(self, jit_trainer: mljit_trainer.JitTrainer, collect_data, collect_data_no_training, step_size, train_sequence_length, batch_size, trajectory_shuffle_buffer_size, num_max_steps):
+    def __init__(self, jit_trainer: mljit_trainer.JitTrainer, collect_data, collect_data_no_training, step_size, num_max_steps, train_settings):
         self.jit_trainer = jit_trainer   
         self.collect_data = collect_data
         self.collect_data_no_training = collect_data_no_training
         self.step_size = step_size
-        self.train_sequence_length = train_sequence_length
-        self.batch_size = batch_size
-        self.trajectory_shuffle_buffer_size = trajectory_shuffle_buffer_size
+        self.train_settings = train_settings
         self.num_max_steps = num_max_steps
 
     def run(self, jit_metrics: mljit_metrics.JitTensorBoardMetrics, train_data, test_data):
@@ -53,7 +51,7 @@ class JitRunner:
             print(f'[mljit] Current episode: {episode_count}')
 
             print('[mljit] Collecting train data...')
-            self.jit_trainer.train(jit_metrics, self.collect_data(train_data), step_size=self.step_size, train_sequence_length=self.train_sequence_length, batch_size=self.batch_size, trajectory_shuffle_buffer_size=self.trajectory_shuffle_buffer_size)
+            self.jit_trainer.train(jit_metrics, self.collect_data(train_data), step_size=self.step_size, train_settings=self.train_settings)
             self.jit_trainer.save_policy()
 
             print('[mljit] Collecting test data for comparisons...')

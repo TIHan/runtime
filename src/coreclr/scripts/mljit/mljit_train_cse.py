@@ -155,7 +155,11 @@ def create_ppo_agent(use_real_critic=False):
         preprocessing_combiner=preprocessing_combiner,
         fc_layer_params=(40, 40, 20))
 
-    learning_rate             = 0.001#0.00003
+    if use_real_critic:
+        learning_rate = 0.001
+    else:
+        learning_rate = 0.00003
+
     epsilon                   = 0.0003125
     entropy_regularization    = 0.01
     importance_ratio_clipping = 0.2
@@ -530,14 +534,14 @@ if build_warmstart:
                                            agent, 
                                            create_trajectories=create_trajectories_for_bc, 
                                            parse=parse_for_bc)
+    
+    train_settings = mljit_trainer.JitTrainSettings(train_sequence_length=1, batch_size=64, trajectory_shuffle_buffer_size=1024)
     jit_runner  = mljit_runner.JitRunner(jit_trainer, 
                                          collect_data=collect_data_for_bc, 
                                          collect_data_no_training=collect_data_no_training, 
-                                         step_size=1000000, 
-                                         train_sequence_length=1, 
-                                         batch_size=64, 
-                                         trajectory_shuffle_buffer_size=1024, 
-                                         num_max_steps=1000000)
+                                         step_size=1000000,
+                                         num_max_steps=1000000,
+                                         train_settings=train_settings)
 
     jit_runner.run(jit_metrics, train_data=baseline, test_data=[])
 
@@ -545,7 +549,7 @@ if build_warmstart:
 else:
     # PPO Training
 
-    agent = create_ppo_agent(use_real_critic=True)
+    agent = create_ppo_agent(use_real_critic=False)
 
     if use_warmstart:
         agent.policy.update(policy_loader.load(warmstart_policy_path))
@@ -560,14 +564,14 @@ else:
                                            agent, 
                                            create_trajectories=create_trajectories_for_ppo, 
                                            parse=parse_for_ppo)
+    
+    train_settings = None#mljit_trainer.JitTrainSettings(train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=1024)
     jit_runner  = mljit_runner.JitRunner(jit_trainer, 
                                          collect_data=collect_data_for_ppo, 
                                          collect_data_no_training=collect_data_no_training, 
                                          step_size=1000, 
-                                         train_sequence_length=16,
-                                         batch_size=256, 
-                                         trajectory_shuffle_buffer_size=1024, 
-                                         num_max_steps=1000000)
+                                         num_max_steps=1000000,
+                                         train_settings=train_settings)
 
     partitioned_baseline = mljit_utils.partition(baseline, 10000)
     jit_runner.run(jit_metrics, train_data=partitioned_baseline[0][:10000], test_data=partitioned_baseline[1][:1000])
