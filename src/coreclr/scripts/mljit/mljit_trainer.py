@@ -50,6 +50,12 @@ def compute_dataset(parse, sequence_examples, train_sequence_length, batch_size,
 def create_dataset(parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size):
     return compute_dataset(parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)
 
+def compute_dataset_special(parse, sequence_examples, train_sequence_length, batch_size):
+    return tf.data.Dataset.from_tensor_slices(sequence_examples).map(parse).unbatch().batch(train_sequence_length).batch(batch_size).cache()
+
+def create_dataset_special(parse, sequence_examples, train_sequence_length, batch_size):
+    return compute_dataset_special(parse, sequence_examples, train_sequence_length, batch_size)
+
 def create_dataset_iter(dataset):
     return iter(dataset.repeat().prefetch(tf.data.AUTOTUNE))
 
@@ -86,24 +92,21 @@ class JitTrainer:
 
                 train_sequence_length = k
                 batch_size = len(v)
-                trajectory_shuffle_buffer_size = k * 64
 
                 if k == 1:
                     train_sequence_length = 2
                     batch_size = int(len(v) / 2)
                     if batch_size < 1:
                         batch_size = 1
-                    trajectory_shuffle_buffer_size = 128
 
                 sequence_examples = self.create_trajectories(v)
-                datasets = datasets + [create_dataset(self.parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)]
+                datasets = datasets + [create_dataset_special(self.parse, sequence_examples, train_sequence_length, batch_size)]
 
             dataset = mljit_utils.functools.reduce(lambda x, y: x.concatenate(y), datasets)
-            print(f'[mljit] Dataset cardinality: {dataset.cardinality()}')
-            dataset = dataset.shuffle(dataset.cardinality(), reshuffle_each_iteration=True)
+            dataset = dataset.shuffle(1024 * 1024, reshuffle_each_iteration=True)
         else:
             sequence_examples = self.create_trajectories(data)
-            dataset = create_dataset(self.parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)
+            dataset = create_dataset(self.parse, sequence_examples, train_settings.train_sequence_length, train_settings.batch_size, train_settings.trajectory_shuffle_buffer_size)
 
         jit_metrics.reset()
 
