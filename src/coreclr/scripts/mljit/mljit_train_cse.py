@@ -158,7 +158,7 @@ def create_ppo_agent(use_real_critic=False):
     if use_real_critic:
         learning_rate = 0.001
     else:
-        learning_rate = 0.001#0.00003
+        learning_rate = 0.0005#0.00003
 
     epsilon                   = 0.0003125
     entropy_regularization    = 0.01
@@ -574,7 +574,7 @@ else:
                                          train_settings=train_settings)
 
     partitioned_baseline = mljit_utils.partition(baseline, 10000)
-    jit_runner.run(jit_metrics, train_data=partitioned_baseline[0][:10000], test_data=partitioned_baseline[1][:1000])
+    jit_runner.run(jit_metrics, train_data=partitioned_baseline[0][:1000], test_data=partitioned_baseline[1][:1000])
 
 # ---------------------------------------
 
