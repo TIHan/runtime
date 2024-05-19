@@ -98,7 +98,7 @@ class JitTrainer:
                 sequence_examples = self.create_trajectories(v)
                 datasets = datasets + [create_dataset(self.parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)]
 
-            dataset = mljit_utils.functools.reduce(lambda x, y: x.concatenate(y), datasets)
+            dataset = mljit_utils.functools.reduce(lambda x, y: x.concatenate(y), datasets).shuffle(64)
         else:
             sequence_examples = self.create_trajectories(data)
             dataset = create_dataset(self.parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)

@@ -158,7 +158,7 @@ def create_ppo_agent(use_real_critic=False):
     if use_real_critic:
         learning_rate = 0.001
     else:
-        learning_rate = 0.00003
+        learning_rate = 0.001#0.00003
 
     epsilon                   = 0.0003125
     entropy_regularization    = 0.01
