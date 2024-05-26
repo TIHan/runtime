@@ -82,7 +82,7 @@ float32_layer = tf.keras.layers.Lambda(lambda x: tf.expand_dims(x, -1))
 int64_layer = tf.keras.layers.Lambda(lambda x: tf.cast(tf.expand_dims(x, -1), tf.float32))
 
 observation_spec_and_preprocessing_layers = [
-    (tf.TensorSpec(dtype=tf.int64, shape=(), name='cse_index'), 
+    (tensor_spec.BoundedTensorSpec(dtype=tf.int64, shape=(), name='cse_index', minimum=0, maximum=1), 
         int64_layer),
     (tf.TensorSpec(dtype=tf.float32, shape=(), name='cse_cost_ex'), 
         float32_layer),
@@ -502,15 +502,6 @@ def collect_data(corpus_file_path, baseline, train_kind):
                 for item in data:
                     if item.spmi_index == spmi_index:
                         reward = (1.0 - (item.perf_score / item_base.perf_score))
-                        
-                        # item.log[0].reward = reward
-
-                        # log_count = len(item.log)
-                        # incr_reward = reward / log_count
-                        # for i in range(log_count):
-                        #     log_item = item.log[i]
-                        #     log_item.reward = (i + 1) * incr_reward
-
                         for log_item in item.log:
                             log_item.reward = reward
 
@@ -543,7 +534,7 @@ if not mljit_superpmi.mldump_file_exists():
     print('[mljit] Finished producing mldump.txt')
 
 def filter_cse_methods(m):
-    return m.num_cse_candidates > 3 and m.perf_score > 0
+    return m.num_cse_candidates > 0 and m.perf_score > 0
 
 baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)
 
