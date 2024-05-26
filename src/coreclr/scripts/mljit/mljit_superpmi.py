@@ -268,8 +268,10 @@ def collect_data(corpus_file_path, spmi_methods, train_kind=0, verbose_log=False
         proc.wait()
         methods = methods + parse_mldump_file_filter_aux(mljit_log_mldump_file, lambda _: True)
 
+    methods_dict = dict()
     results = []
     for method in methods:
+        methods_dict[method.spmi_index] = method
         train_log_file_path = os.path.join(log_path, f'_mljit_log_{method.spmi_index}.json')
         if os.path.isfile(train_log_file_path):
             method.log = parse_log_file(method.spmi_index, train_log_file_path)
@@ -285,15 +287,10 @@ def collect_data(corpus_file_path, spmi_methods, train_kind=0, verbose_log=False
             print(f'[mljit] WARNING: spmi_index \'{method.spmi_index}\' did not have a log. Ignoring it for future collections.')
             ignore_indices.add(method.spmi_index)
 
-    if spmi_methods is not None:
-        for spmi_method in spmi_methods:
-            was_found = False
-            for method in methods:
-                if method.spmi_index == spmi_method:
-                    was_found = True
-            if not was_found:
-                print(f'[mljit] WARNING: spmi_index \'{spmi_method}\' was not found in the results, likely due to a SuperPMI/JIT error. Ignoring it for future collections.')
-                ignore_indices.add(spmi_method)
+    for spmi_method in spmi_methods:
+        if not spmi_method in methods_dict and not spmi_method in ignore_indices:
+            print(f'[mljit] WARNING: spmi_index \'{spmi_method}\' was not found in the results, likely due to a SuperPMI/JIT error. Ignoring it for future collections.')
+            ignore_indices.add(spmi_method)
 
     cleanup_logs()
 

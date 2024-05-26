@@ -190,7 +190,7 @@ def create_ppo_agent(use_real_critic=False):
     if use_real_critic:
         learning_rate = 0.001
     else:
-        learning_rate = 0.0001#0.00003
+        learning_rate = 0.001#0.00003
 
     epsilon                   = 0.0003125
     entropy_regularization    = 0.01
@@ -497,13 +497,16 @@ def collect_data(corpus_file_path, baseline, train_kind):
         # Calculate and update rewards.
         # Only do this for exploration.
         if train_kind == 2:
-            for item_base in baseline:
-                spmi_index = item_base.spmi_index
-                for item in data:
-                    if item.spmi_index == spmi_index:
-                        reward = (1.0 - (item.perf_score / item_base.perf_score))
-                        for log_item in item.log:
-                            log_item.reward = reward
+            baseline_dict = dict()
+
+            for x in baseline:
+                baseline_dict[x.spmi_index] = x
+
+            for item in data:
+                item_base = baseline_dict[item.spmi_index]
+                reward = (1.0 - (item.perf_score / item_base.perf_score))
+                for log_item in item.log:
+                    log_item.reward = reward
 
         return data
     
@@ -623,7 +626,7 @@ else:
     
     partitioned = mljit_utils.partition(baseline, 10000)
 
-    jit_runner.run(jit_metrics, train_data=partitioned[0], test_data=partitioned[1][:1000])
+    jit_runner.run(jit_metrics, train_data=baseline, test_data=partitioned[1][:1000])
 
 # ---------------------------------------
 
