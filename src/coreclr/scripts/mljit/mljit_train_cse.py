@@ -158,7 +158,7 @@ def create_ppo_agent(use_real_critic=False):
     if use_real_critic:
         learning_rate = 0.001
     else:
-        learning_rate = 0.0005#0.00003
+        learning_rate = 0.0001#0.00003
 
     epsilon                   = 0.0003125
     entropy_regularization    = 0.01
@@ -198,8 +198,8 @@ def create_ppo_agent(use_real_critic=False):
             entropy_regularization=entropy_regularization,
             policy_l2_reg=policy_l2_reg,
             num_epochs=1,
-            normalize_observations=False,
-            normalize_rewards=False,
+            normalize_observations=True,
+            normalize_rewards=True,
             debug_summaries=True,
             summarize_grads_and_vars=True,
 
@@ -470,15 +470,19 @@ def collect_data(corpus_file_path, baseline, train_kind):
                 for item in data:
                     if item.spmi_index == spmi_index:
                         reward = (1.0 - (item.perf_score / item_base.perf_score))
+                        #reward = np.clip(reward, -1.0, 1.0)
                         for log_item in item.log:
                             log_item.reward = reward
 
         return data
 
-def create_trajectories(data: Sequence[Any], use_behavioral_cloning):    
+def create_trajectories(data: Sequence[Any], use_behavioral_cloning):
+    print(f'[mljit] Bundling...')
     acc = []
     for x in data:
-        acc = acc + [x.log]
+        #acc = acc + [x.log]
+        acc = acc + x.log
+    acc = [acc]
 
     print(f'[mljit] Creating trajectories: {len(acc)}...')
     return list(map(lambda x: create_serialized_sequence_example(x, use_behavioral_cloning), acc))
@@ -536,11 +540,11 @@ if build_warmstart:
                                            parse=parse_for_bc)
     
     train_settings = mljit_trainer.JitTrainSettings(train_sequence_length=1, batch_size=64, trajectory_shuffle_buffer_size=1024)
-    jit_runner  = mljit_runner.JitRunner(jit_trainer, 
+    jit_runner  = mljit_runner.JitRunner(jit_trainer,
                                          collect_data=collect_data_for_bc, 
                                          collect_data_no_training=collect_data_no_training, 
-                                         step_size=1000000,
-                                         num_max_steps=1000000,
+                                         num_epochs=100000,
+                                         num_episodes=1,
                                          train_settings=train_settings)
 
     jit_runner.run(jit_metrics, train_data=baseline, test_data=[])
@@ -565,16 +569,15 @@ else:
                                            create_trajectories=create_trajectories_for_ppo, 
                                            parse=parse_for_ppo)
     
-    train_settings = None#mljit_trainer.JitTrainSettings(train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=1024)
+    train_settings = mljit_trainer.JitTrainSettings(train_sequence_length=16, batch_size=256, trajectory_shuffle_buffer_size=1024)
     jit_runner  = mljit_runner.JitRunner(jit_trainer, 
                                          collect_data=collect_data_for_ppo, 
                                          collect_data_no_training=collect_data_no_training, 
-                                         step_size=1000, 
-                                         num_max_steps=1000000,
+                                         num_epochs=100, 
+                                         num_episodes=100,
                                          train_settings=train_settings)
 
-    partitioned_baseline = mljit_utils.partition(baseline, 10000)
-    jit_runner.run(jit_metrics, train_data=partitioned_baseline[0][:1000], test_data=partitioned_baseline[1][:1000])
+    jit_runner.run(jit_metrics, train_data=baseline, test_data=baseline[:2000])
 
 # ---------------------------------------
 

@@ -3,10 +3,24 @@ import mljit_superpmi
 
 corpus_file_path = os.environ['DOTNET_MLJitCorpusFile']
 
+# ---------------------------------------
+
+if not mljit_superpmi.mldump_file_exists():
+    print('[mljit] Producing mldump.txt...')
+    mljit_superpmi.produce_mldump_file(corpus_file_path)
+    print('[mljit] Finished producing mldump.txt')
+
+def filter_cse_methods(m):
+    return m.num_cse_candidates > 0 and m.perf_score > 0
+
+spmi_indices = list(map(lambda x: x.spmi_index, mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)))
+
+# ---------------------------------------
+
 print('[mljit] Collecting baseline methods...')
-baseline_methods = mljit_superpmi.collect_data(corpus_file_path, train_kind=0)
+baseline_methods = mljit_superpmi.collect_data(corpus_file_path, spmi_indices, train_kind=0)
 print('[mljit] Collecting policy methods...')
-policy_methods = mljit_superpmi.collect_data(corpus_file_path, train_kind=1)
+policy_methods = mljit_superpmi.collect_data(corpus_file_path, spmi_indices, train_kind=1)
 
 print('[mljit] Comparing baseline and policy methods...')
 

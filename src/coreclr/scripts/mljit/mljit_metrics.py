@@ -90,26 +90,25 @@ class JitTensorBoardMetrics:
         self.improvement_score.update_state(improvement_score)
         self.regression_score.update_state(regression_score)
 
-        if tf.summary.should_record_summaries():
-            with tf.name_scope('jit/'):
-                tf.summary.scalar(
-                    name='num_improvements',
-                    data=self.num_improvements.result(),
-                    step=step)
-                tf.summary.scalar(
-                    name='num_regressions',
-                    data=self.num_regressions.result(),
-                    step=step)
-                tf.summary.scalar(
-                    name='improvement_score',
-                    data=self.improvement_score.result(),
-                    step=step)
-                tf.summary.scalar(
-                    name='regression_score',
-                    data=self.regression_score.result(),
-                    step=step)
+        with tf.name_scope('jit/'):
+            tf.summary.scalar(
+                name='num_improvements',
+                data=self.num_improvements.result(),
+                step=step)
+            tf.summary.scalar(
+                name='num_regressions',
+                data=self.num_regressions.result(),
+                step=step)
+            tf.summary.scalar(
+                name='improvement_score',
+                data=self.improvement_score.result(),
+                step=step)
+            tf.summary.scalar(
+                name='regression_score',
+                data=self.regression_score.result(),
+                step=step)
 
-    def update(self, data: Sequence[Any], experience, step):
+    def add_experience(self, experience):
         is_action = ~experience.is_boundary()
 
         self.data_action_mean.update_state(
@@ -118,25 +117,24 @@ class JitTensorBoardMetrics:
             experience.reward, sample_weight=is_action)
         self.num_trajectories.update_state(experience.is_first())
 
-        if tf.summary.should_record_summaries():
-            with tf.name_scope('default/'):
-                tf.summary.scalar(
-                    name='data_action_mean',
-                    data=self.data_action_mean.result(),
-                    step=step)
-                tf.summary.scalar(
-                    name='data_reward_mean',
-                    data=self.data_reward_mean.result(),
-                    step=step)
-                tf.summary.scalar(
-                    name='num_trajectories',
-                    data=self.num_trajectories.result(),
-                    step=step)
-
-            monitor = create_method_trajectories_monitor(data)
-            for name_scope, d in monitor.items():
-                with tf.name_scope(name_scope + '/'):
-                    for key, value in d.items():
-                        tf.summary.scalar(name=key, data=value, step=step)
-
-            tf.summary.histogram(name='reward', data=experience.reward, step=step)
+    def update_experience(self, step):
+        with tf.name_scope('default/'):
+            tf.summary.scalar(
+                name='data_action_mean',
+                data=self.data_action_mean.result(),
+                step=step)
+            tf.summary.scalar(
+                name='data_reward_mean',
+                data=self.data_reward_mean.result(),
+                step=step)
+            tf.summary.scalar(
+                name='num_trajectories',
+                data=self.num_trajectories.result(),
+                step=step)
+            
+    def update_trajectories(self, data: Sequence[Any], step):
+        monitor = create_method_trajectories_monitor(data)
+        for name_scope, d in monitor.items():
+            with tf.name_scope(name_scope + '/'):
+                for key, value in d.items():
+                    tf.summary.scalar(name=key, data=value, step=step)

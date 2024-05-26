@@ -33,25 +33,25 @@ from tf_agents.utils import common
 from absl import logging
 
 class JitRunner:
-    def __init__(self, jit_trainer: mljit_trainer.JitTrainer, collect_data, collect_data_no_training, step_size, num_max_steps, train_settings):
+    def __init__(self, jit_trainer: mljit_trainer.JitTrainer, collect_data, collect_data_no_training, num_epochs, num_episodes, train_settings):
         self.jit_trainer = jit_trainer   
         self.collect_data = collect_data
         self.collect_data_no_training = collect_data_no_training
-        self.step_size = step_size
+        self.num_epochs = num_epochs
         self.train_settings = train_settings
-        self.num_max_steps = num_max_steps
+        self.num_episodes = num_episodes
 
     def run(self, jit_metrics: mljit_metrics.JitTensorBoardMetrics, train_data, test_data):
 
         self.jit_trainer.save_policy()
 
         episode_count = 0
-        while self.jit_trainer.step.numpy() < self.num_max_steps:
+        while episode_count < self.num_episodes:
             print(f'[mljit] Current step: {self.jit_trainer.step.numpy()}')
             print(f'[mljit] Current episode: {episode_count}')
 
             print('[mljit] Collecting train data...')
-            self.jit_trainer.train(jit_metrics, self.collect_data(train_data), step_size=self.step_size, train_settings=self.train_settings)
+            self.jit_trainer.train(jit_metrics, self.collect_data(train_data), num_epochs=self.num_epochs, train_settings=self.train_settings)
             self.jit_trainer.save_policy()
 
             print('[mljit] Collecting test data for comparisons...')

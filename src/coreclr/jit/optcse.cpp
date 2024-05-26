@@ -5282,13 +5282,6 @@ void CSE_HeuristicCommon::ConsiderCandidates()
             PerformCSE(&candidate);
             madeChanges = true;
         }
-
-#ifdef MLJIT
-        if (mljitEnabled && (mltrain == 0))
-        {
-            mljit_log_action(m_pCompiler, Compiler::MIN_CSE_COST, candidate.CseDsc(), doCSE);
-        }
-#endif // DEBUG
     }
 }
 

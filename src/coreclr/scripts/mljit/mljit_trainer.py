@@ -51,13 +51,16 @@ def create_dataset(parse, sequence_examples, train_sequence_length, batch_size, 
     return compute_dataset(parse, sequence_examples, train_sequence_length, batch_size, trajectory_shuffle_buffer_size)
 
 def compute_dataset_special(parse, sequence_examples, train_sequence_length, batch_size):
-    return tf.data.Dataset.from_tensor_slices(sequence_examples).map(parse).unbatch().batch(train_sequence_length).batch(batch_size).cache()
+    return tf.data.Dataset.from_tensor_slices(sequence_examples).map(parse).unbatch().batch(train_sequence_length, drop_remainder=True).cache().shuffle(1024 * 1024).batch(batch_size, drop_remainder=True)
 
 def create_dataset_special(parse, sequence_examples, train_sequence_length, batch_size):
     return compute_dataset_special(parse, sequence_examples, train_sequence_length, batch_size)
 
 def create_dataset_iter(dataset):
     return iter(dataset.repeat().prefetch(tf.data.AUTOTUNE))
+
+def create_non_repeat_dataset_iter(dataset):
+    return iter(dataset.prefetch(tf.data.AUTOTUNE))
 
 @dataclass
 class JitTrainSettings:
@@ -80,7 +83,7 @@ class JitTrainer:
         save_policy(self.policy_saver, self.saved_policy_path)
         save_policy(self.collect_policy_saver, self.saved_collect_policy_path)
 
-    def train(self, jit_metrics: mljit_metrics.JitTensorBoardMetrics, data: Sequence[mljit_superpmi.Method], step_size, train_settings: Optional[JitTrainSettings]=None):
+    def train(self, jit_metrics: mljit_metrics.JitTensorBoardMetrics, data: Sequence[mljit_superpmi.Method], num_epochs, train_settings: Optional[JitTrainSettings]=None):
 
         if train_settings is None:
             lookup = defaultdict(list)
@@ -110,26 +113,14 @@ class JitTrainer:
 
         jit_metrics.reset()
 
-        summary_interval = min(step_size, 1000)
-        summary_interval = max(summary_interval, 250)
-
-        with tf.summary.record_if(lambda: tf.math.equal(self.step % summary_interval, 0)):
-            print('[mljit] Training...')
-            dataset_iter = create_dataset_iter(dataset)
-            count = 0
-            for _ in range(step_size):
-                # When the data is not enough to fill in a batch, next(dataset_iter)
-                # will throw StopIteration exception, logging a warning message instead
-                # of killing the training when it happens.
-                try:
-                    experience = next(dataset_iter)
-                    count = count + 1
-                except StopIteration:
-                    logging.warning(
-                        ('[mljit] ERROR: Skipped training because do not have enough data to fill '
-                        'in a batch, consider increase data or reduce batch size.'))
-                    break
-
-                self.agent.train(experience)
-                jit_metrics.update(data, experience, self.step)
-                mljit_utils.print_progress_bar(count, step_size)
+        print('[mljit] Training...')           
+        count = 0
+        for _ in range(num_epochs):
+            for experience in dataset:
+                with tf.summary.record_if(lambda: tf.math.equal(self.step % 1000, 0)):
+                    self.agent.train(experience)
+                jit_metrics.add_experience(experience)
+            count = count + 1
+            mljit_utils.print_progress_bar(count, num_epochs)
+        jit_metrics.update_experience(self.step)
+        jit_metrics.update_trajectories(data, self.step)

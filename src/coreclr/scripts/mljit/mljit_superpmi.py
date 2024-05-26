@@ -29,7 +29,6 @@ log_path          = os.environ['DOTNET_MLJitLogPath']
 superpmi_exe      = os.path.join(core_root, 'superpmi.exe') # TODO: Only works on windows, fix it for other OSes
 clrjit_dll        = os.path.join(core_root, 'clrjit.dll') # TODO: Only works on windows, fix it for other OSes
 mldump_txt        = os.path.join(log_path, "mldump.txt")
-mldump_data_txt        = os.path.join(log_path, "mldump_data.txt")
 
 # --------------------------------------------------------------------------------
 # Utility
@@ -49,6 +48,9 @@ def run(args, working_directory = None, env=None):
     start_time = now()
     subprocess.run(args, shell = True, cwd = working_directory, env=env)
     return now() - start_time
+
+def run_task(args, working_directory = None, env=None):
+    return subprocess.Popen(args, shell = True, cwd = working_directory, env = env)
 
 def regex(pattern, text, groupNum=0):
     result = re.search(pattern, text)
@@ -81,7 +83,6 @@ class Method:
     perf_score: float
     num_cse_usages: int
     num_cse_candidates: int
-    cse_seq: any
     spmi_index: int
     code_size: float
     log: any
@@ -97,15 +98,10 @@ def parse_mldump_line(line):
     perf_score_pattern         = regex('(PerfScore|perf score) (\d+(\.\d+)?)', line, 2)
     num_cse_usages_pattern     = regex('num cse ([0-9]{1,})', line, 1)
     num_cse_candidates_pattern = regex('num cand ([0-9]{1,})', line, 1)
-    cse_seq_pattern            = regex('seq ([0-9,]*)', line, 1)
     spmi_index_pattern         = regex('spmi index ([0-9]{1,})', line, 1)
     code_size_pattern          = regex('Total bytes of code ([0-9]{1,})', line, 1)
 
     is_valid = True
-
-    cse_seq = []
-    if cse_seq_pattern:
-        cse_seq = list(map(lambda x: int(x), cse_seq_pattern.replace(' ', '').split(',')))
 
     perf_score = 10000000000.0
     if perf_score_pattern:
@@ -167,7 +163,6 @@ def parse_mldump_line(line):
                 perf_score,
                 num_cse_usages,
                 num_cse_candidates,
-                cse_seq,
                 spmi_index,
                 code_size,
                 []
@@ -192,9 +187,6 @@ def parse_mldump_file_filter_aux(path, predicate):
 def parse_mldump_file_filter(predicate):
     return parse_mldump_file_filter_aux(mldump_txt, predicate)
 
-def parse_mldump_data_file_filter(predicate):
-    return parse_mldump_file_filter_aux(mldump_data_txt, predicate)
-
 def parse_log_file(spmi_index, path):
     try:
         f = open(path)
@@ -216,15 +208,9 @@ def cleanup_logs():
     for mljit_log_file in mljit_log_files:
         os.remove(os.path.join(log_path, mljit_log_file))
 
-    try:
-        os.remove(mldump_data_txt)
-    except Exception:
-        ()
-
 # --------------------------------------------------------------------------------
-def collect_data(corpus_file_path, spmi_methods=None, train_kind=0, verbose_log=False):
-    if spmi_methods is not None:
-        spmi_methods = list(filter(lambda x: not (x in ignore_indices), spmi_methods))
+def collect_data(corpus_file_path, spmi_methods, train_kind=0, verbose_log=False):
+    spmi_methods = list(filter(lambda x: not (x in ignore_indices), spmi_methods))
 
     start_time = time.time()
 
@@ -245,31 +231,42 @@ def collect_data(corpus_file_path, spmi_methods=None, train_kind=0, verbose_log=
 
     cleanup_logs()
 
-    # Parallelism is only available when a compile list is not specified.
-    parallel = spmi_methods is None
-
     verbose_arg = '-v q'
     if verbose_log:
         verbose_arg = ''
 
-    parallel_arg = ''
-    if parallel:
-        parallel_arg = '-p'
+    parallel_count = os.cpu_count()
+    partition_amount = len(spmi_methods)
+    if partition_amount > parallel_count:
+        partition_amount = int(len(spmi_methods) / parallel_count) + parallel_count
+    partitioned_spmi_methods = mljit_utils.partition(spmi_methods, partition_amount)
+    parallel_count = len(partitioned_spmi_methods)
 
-    compile_arg = ''
-    if spmi_methods is not None:
-        mcl_path = os.path.join(log_path, "mljit.mcl")
-        mcl = "\n".join(map(lambda x: str(x), spmi_methods))
+    procs = []
+    mljit_log_mldump_files = []
+    for i in range(parallel_count):
+        mljit_log_mldump_file = os.path.join(log_path, f'_mljit_log_mldump_{i}.txt')
+
+        mcl_path = os.path.join(log_path, f'mljit_{i}.mcl')
+        mcl = "\n".join(map(lambda x: str(x), partitioned_spmi_methods[i]))
         compile_arg = f'-c {mcl_path}'
         f = open(mcl_path, "w")
         f.write(mcl)
         f.close()
 
-    jit_std_out_file_arg = f'-jitoption JitStdOutFile={mldump_data_txt}'
+        jit_std_out_file_arg = f'-jitoption JitStdOutFile={mljit_log_mldump_file}'
 
-    run(f"{superpmi_exe} {parallel_arg} {compile_arg} {verbose_arg} {jit_std_out_file_arg} -jitoption JitMetrics=1 {clrjit_dll} {corpus_file_path}", env=superpmi_env)
+        proc = run_task(f"{superpmi_exe} {compile_arg} {verbose_arg} {jit_std_out_file_arg} -jitoption JitMetrics=1 {clrjit_dll} {corpus_file_path}", env=superpmi_env)
+        mljit_log_mldump_files = mljit_log_mldump_files + [mljit_log_mldump_file]
+        procs = procs + [proc]
 
-    methods = parse_mldump_data_file_filter(lambda _: True)
+    methods = []
+    for i in range(len(procs)):
+        proc = procs[i]
+        mljit_log_mldump_file = mljit_log_mldump_files[i]
+
+        proc.wait()
+        methods = methods + parse_mldump_file_filter_aux(mljit_log_mldump_file, lambda _: True)
 
     results = []
     for method in methods:
@@ -279,7 +276,7 @@ def collect_data(corpus_file_path, spmi_methods=None, train_kind=0, verbose_log=
 
             # Log could be empty, so do not include this in the results.
             # As an example: this can mean that all the CSE candidates were not viable; the policy should not look at non-viable candidates.
-            if method.log:
+            if method.log and len(method.log) > 1:
                 results.append(method)
             else:
                 print(f'[mljit] WARNING: spmi_index \'{method.spmi_index}\' log was empty. Ignoring it for future collections.')
