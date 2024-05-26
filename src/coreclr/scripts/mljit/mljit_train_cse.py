@@ -45,6 +45,38 @@ saved_collect_policy_path = os.environ['DOTNET_MLJitSavedCollectPolicyPath']
 log_path                  = os.environ['DOTNET_MLJitLogPath']
 
 warmstart_policy_path = os.path.join(log_path, 'warmstart_policy/')
+
+@dataclass
+class CseLogItem:
+    cse_index: int
+    cse_cost_ex: float
+    cse_use_count_weighted_log: float
+    cse_def_count_weighted_log: float
+    cse_cost_sz: float
+    cse_use_count: int
+    cse_def_count: int
+    cse_is_live_across_call: int
+    cse_is_int: int
+    cse_is_constant_not_shared: int
+    cse_is_shared_constant: int
+    cse_cost_is_MIN_CSE_COST: int
+    cse_is_constant_live_across_call: int
+    cse_is_constant_min_cost: int
+    cse_cost_is_MIN_CSE_COST_live_across_call: int
+    cse_is_GTF_MAKE_CSE: int
+    cse_num_distinct_locals: int
+    cse_num_local_occurrences: int
+    cse_has_call: int
+    log_cse_use_count_weighted_times_cost_ex: float
+    log_cse_use_count_weighted_times_num_local_occurrences: float
+    cse_distance: float
+    cse_is_containable: int
+    cse_is_cheap_containable: int
+    cse_is_live_across_call_in_LSRA_ordering: int
+    log_pressure_estimated_weight: int
+    CategoricalProjectionNetwork_logits: Sequence[float]
+    cse_decision: int
+    reward: float
   
 float32_layer = tf.keras.layers.Lambda(lambda x: tf.expand_dims(x, -1))
 int64_layer = tf.keras.layers.Lambda(lambda x: tf.cast(tf.expand_dims(x, -1), tf.float32))
@@ -181,8 +213,8 @@ def create_ppo_agent(use_real_critic=False):
             entropy_regularization=entropy_regularization,
             policy_l2_reg=policy_l2_reg,
             num_epochs=1,
-            normalize_observations=False,
-            normalize_rewards=False,
+            normalize_observations=True,
+            normalize_rewards=True,
             debug_summaries=True,
             summarize_grads_and_vars=True)
     else:
@@ -470,21 +502,37 @@ def collect_data(corpus_file_path, baseline, train_kind):
                 for item in data:
                     if item.spmi_index == spmi_index:
                         reward = (1.0 - (item.perf_score / item_base.perf_score))
-                        #reward = np.clip(reward, -1.0, 1.0)
+                        
+                        # item.log[0].reward = reward
+
+                        # log_count = len(item.log)
+                        # incr_reward = reward / log_count
+                        # for i in range(log_count):
+                        #     log_item = item.log[i]
+                        #     log_item.reward = (i + 1) * incr_reward
+
                         for log_item in item.log:
                             log_item.reward = reward
 
         return data
-
+    
 def create_trajectories(data: Sequence[Any], use_behavioral_cloning):
     print(f'[mljit] Bundling...')
     acc = []
     for x in data:
-        #acc = acc + [x.log]
+        acc = acc + [x.log]
+
+    print(f'[mljit] Creating trajectories: {len(acc)}...')
+    return list(map(lambda x: create_serialized_sequence_example(x, use_behavioral_cloning), acc))
+
+def create_one_trajectory(data: Sequence[Any], use_behavioral_cloning):
+    print(f'[mljit] Bundling...')
+    acc = []
+    for x in data:
         acc = acc + x.log
     acc = [acc]
 
-    print(f'[mljit] Creating trajectories: {len(acc)}...')
+    print(f'[mljit] Creating one trajectory...')
     return list(map(lambda x: create_serialized_sequence_example(x, use_behavioral_cloning), acc))
 
 # ---------------------------------------
@@ -495,7 +543,7 @@ if not mljit_superpmi.mldump_file_exists():
     print('[mljit] Finished producing mldump.txt')
 
 def filter_cse_methods(m):
-    return m.num_cse_candidates > 0 and m.perf_score > 0
+    return m.num_cse_candidates > 3 and m.perf_score > 0
 
 baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)
 
@@ -507,7 +555,7 @@ def collect_data_no_training(x):
     return collect_data(corpus_file_path, x, train_kind=1)
 
 def create_trajectories_for_bc(x):
-    return create_trajectories(x, use_behavioral_cloning=True)
+    return create_one_trajectory(x, use_behavioral_cloning=True)
 
 def parse_for_bc(x):
     return parse(x, use_behavioral_cloning=True)
@@ -516,7 +564,7 @@ def collect_data_for_bc(x):
     return collect_data(corpus_file_path, x, train_kind=0)
 
 def create_trajectories_for_ppo(x):
-    return create_trajectories(x, use_behavioral_cloning=False)
+    return create_one_trajectory(x, use_behavioral_cloning=False)
 
 def parse_for_ppo(x):
     return parse(x, use_behavioral_cloning=False)
@@ -527,13 +575,17 @@ def collect_data_for_ppo(x):
 build_warmstart = False
 use_warmstart = False
 
+def create_default_log_item():
+    return CseLogItem(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [0.0, 0.0], 0, 0)
+
 if build_warmstart:
     # BC Training
 
     agent = create_bc_agent(use_actor_network=True)
 
     jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
-    jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, 
+    jit_trainer = mljit_trainer.JitTrainer(create_default_log_item,
+                                           saved_policy_path, 
                                            saved_collect_policy_path, 
                                            agent, 
                                            create_trajectories=create_trajectories_for_bc, 
@@ -563,7 +615,8 @@ else:
         # agent.collect_policy.update(fixed_policy.FixedPolicy(tf.constant(0, dtype=tf.int64), agent.time_step_spec, agent.action_spec))
 
     jit_metrics = mljit_metrics.JitTensorBoardMetrics(log_path)
-    jit_trainer = mljit_trainer.JitTrainer(saved_policy_path, 
+    jit_trainer = mljit_trainer.JitTrainer(create_default_log_item,
+                                           saved_policy_path, 
                                            saved_collect_policy_path, 
                                            agent, 
                                            create_trajectories=create_trajectories_for_ppo, 
@@ -576,8 +629,10 @@ else:
                                          num_epochs=100, 
                                          num_episodes=100,
                                          train_settings=train_settings)
+    
+    partitioned = mljit_utils.partition(baseline, 10000)
 
-    jit_runner.run(jit_metrics, train_data=baseline, test_data=baseline[:2000])
+    jit_runner.run(jit_metrics, train_data=partitioned[0], test_data=partitioned[1][:1000])
 
 # ---------------------------------------
 

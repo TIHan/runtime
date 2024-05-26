@@ -276,7 +276,7 @@ def collect_data(corpus_file_path, spmi_methods, train_kind=0, verbose_log=False
 
             # Log could be empty, so do not include this in the results.
             # As an example: this can mean that all the CSE candidates were not viable; the policy should not look at non-viable candidates.
-            if method.log and len(method.log) > 1:
+            if method.log and len(method.log) > 0:
                 results.append(method)
             else:
                 print(f'[mljit] WARNING: spmi_index \'{method.spmi_index}\' log was empty. Ignoring it for future collections.')
