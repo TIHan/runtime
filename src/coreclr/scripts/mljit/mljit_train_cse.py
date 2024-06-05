@@ -539,7 +539,7 @@ if not mljit_superpmi.mldump_file_exists():
 def filter_cse_methods(m):
     return m.num_cse_candidates > 0 and m.perf_score > 0
 
-baseline = mljit_superpmi.parse_mldump_file_filter(filter_cse_methods)
+baseline = mljit_superpmi.parse_mldump_file_filter(corpus_file_path, filter_cse_methods)
 
 # ---------------------------------------
 
@@ -620,8 +620,8 @@ else:
     jit_runner  = mljit_runner.JitRunner(jit_trainer, 
                                          collect_data=collect_data_for_ppo, 
                                          collect_data_no_training=collect_data_no_training, 
-                                         num_epochs=100, 
-                                         num_episodes=100,
+                                         num_epochs=50, 
+                                         num_episodes=200,
                                          train_settings=train_settings)
     
     partitioned = mljit_utils.partition(baseline, 10000)

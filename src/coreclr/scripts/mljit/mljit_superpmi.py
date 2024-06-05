@@ -28,7 +28,6 @@ core_root         = os.environ['CORE_ROOT']
 log_path          = os.environ['DOTNET_MLJitLogPath']
 superpmi_exe      = os.path.join(core_root, 'superpmi.exe') # TODO: Only works on windows, fix it for other OSes
 clrjit_dll        = os.path.join(core_root, 'clrjit.dll') # TODO: Only works on windows, fix it for other OSes
-mldump_txt        = os.path.join(log_path, "mldump.txt")
 
 # --------------------------------------------------------------------------------
 # Utility
@@ -89,9 +88,11 @@ class Method:
 
 # not used, but useful for getting a complete list of results from JITted functions.
 def produce_mldump_file(corpus_file_path):
+    mldump_txt = os.path.join(log_path, f"mldump_{mljit_utils.get_file_name_without_extension(corpus_file_path)}.txt")
     run(f"{superpmi_exe} -jitoption JitStdOutFile={mldump_txt} -jitoption JitMetrics=1 {clrjit_dll} {corpus_file_path}")
 
-def mldump_file_exists():
+def mldump_file_exists(corpus_file_path):
+    mldump_txt = os.path.join(log_path, f"mldump_{mljit_utils.get_file_name_without_extension(corpus_file_path)}.txt")
     return os.path.isfile(mldump_txt)
 
 def parse_mldump_line(line):
@@ -184,7 +185,8 @@ def parse_mldump_file_filter_aux(path, predicate):
     dump_file.close()
     return list(parse_mldump_filter(predicate, lines))
 
-def parse_mldump_file_filter(predicate):
+def parse_mldump_file_filter(corpus_file_path, predicate):
+    mldump_txt = os.path.join(log_path, f"mldump_{mljit_utils.get_file_name_without_extension(corpus_file_path)}.txt")
     return parse_mldump_file_filter_aux(mldump_txt, predicate)
 
 def parse_log_file(spmi_index, path):

@@ -106,7 +106,8 @@ void mljit_policy_set_cse_inputs(MLJIT_CsePolicyBase* policy, Compiler* compiler
         }
     }
 
-    policy->SetInput_cse_index(0); // cse->csdIndex); // REVIEW: Should we actually consider the index?
+    policy->SetInput_cse_index(cse->csdBlock->HasFlag(BBF_COLD)); // cse->csdIndex); // REVIEW: Should we actually
+                                                                  // consider the index?
     policy->SetInput_cse_cost_ex(costEx);
     policy->SetInput_cse_use_count_weighted_log((float)(deMinimusAdj + log(max(deMinimis, cse->csdUseWtCnt))));
     policy->SetInput_cse_def_count_weighted_log((float)(deMinimusAdj + log(max(deMinimis, cse->csdDefWtCnt))));

@@ -48,3 +48,13 @@ def map_dict_value(f, my_dictionary):
 
 def flatten(xss):
     return [x for xs in xss for x in xs]
+
+def get_file_name(file_path):
+    file_path = os.path.basename(file_path)
+    base_name, ext = os.path.splitext(file_path)
+    return base_name + ext
+
+def get_file_name_without_extension(file_path):
+    file_path = os.path.basename(file_path)
+    base_name, _ = os.path.splitext(file_path)
+    return base_name
